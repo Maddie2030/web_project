@@ -1,0 +1,233 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # --- Backend Microservices (FastAPI) ---
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./api-gateway:/app # Mount code for development/live reloading
+    ports:
+      - "8000:8000" # Map API Gateway port to host
+    environment:
+      # These will be set by the .env file in the container build/runtime
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - TEMPLATE_SERVICE_URL=http://template-service:8000
+      - RENDER_SERVICE_URL=http://render-service:8000
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY} # From your service's .env.example
+    networks:
+      - app-network
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      template-service:
+        condition: service_healthy
+      render-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"] # Assuming /health endpoint
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./auth-service:/app # Mount code for development/live reloading
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - SECRET_KEY=${AUTH_SECRET_KEY} # Specific to auth service
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    networks:
+      - app-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  template-service:
+    build: ./template-service
+    container_name: template-service
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./template-service:/app # Mount code for development/live reloading
+      - static_backgrounds:/app/static/backgrounds # Shared volume for background images
+    environment:
+      - MONGO_URI=mongodb://${MONGO_INITDB_ROOT_USERNAME}:${MONGO_INITDB_ROOT_PASSWORD}@mongo:27017/template_db
+      - STATIC_BACKGROUNDS_PATH=/app/static/backgrounds # Path inside container
+    networks:
+      - app-network
+    depends_on:
+      mongo:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  render-service:
+    build: ./render-service
+    container_name: render-service
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./render-service:/app # Mount code for development/live reloading
+      - static_backgrounds:/app/static/backgrounds # Read templates from here
+      - static_outputs:/app/static/outputs         # Write rendered files here
+    environment:
+      - TEMPLATE_SERVICE_URL=http://template-service:8000
+      - STATIC_BACKGROUNDS_PATH=/app/static/backgrounds
+      - STATIC_OUTPUTS_PATH=/app/static/outputs
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+    networks:
+      - app-network
+    depends_on:
+      template-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker-service: # FastAPI app for worker-specific endpoints (e.g., /status)
+    build: ./worker-service
+    container_name: worker-service
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload # Can remove if only celery-worker is used
+    volumes:
+      - ./worker-service:/app
+      # Mount shared volumes needed by worker tasks if they access files
+      - static_backgrounds:/app/static/backgrounds
+      - static_outputs:/app/static/outputs
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - LOG_LEVEL=INFO
+      # Add any other environment variables needed by the worker tasks
+    networks:
+      - app-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  celery-worker: # Dedicated Celery worker process
+    build: ./worker-service # Reuses the worker-service build context
+    container_name: celery-worker
+    command: celery -A app.celery_app worker --loglevel=info # Adjust `app.celery_app` as needed
+    volumes:
+      - ./worker-service:/app # Mount code for the worker
+      # Crucially, mount the same static volumes that render-service uses if worker handles file ops
+      - static_backgrounds:/app/static/backgrounds
+      - static_outputs:/app/static/outputs
+    environment:
+      - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - LOG_LEVEL=INFO
+      # Ensure all env vars required by Celery tasks are available here too
+    networks:
+      - app-network
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # --- Database and Cache Services ---
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data # Persistent data for Redis
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mongo:
+    image: mongo:6
+    container_name: mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    volumes:
+      - mongo_data:/data/db # Persistent data for MongoDB
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data # Persistent data for PostgreSQL
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Frontend Service ---
+  frontend-service:
+    build: ./frontend-service
+    container_name: frontend-service
+    # Command for Vite dev server - ensures it listens on all interfaces
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./frontend-service:/app # Mount code for development/live reloading
+      - node_modules_frontend:/app/node_modules # Cache node_modules
+    ports:
+      - "3000:3000" # Map React dev server port to host
+    networks:
+      - app-network
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    # A basic health check for the dev server might just check the port
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+# --- Docker Networks ---
+networks:
+  app-network:
+    driver: bridge # Default bridge network
+
+# --- Docker Volumes for Persistent Data ---
+volumes:
+  db_data:        # For PostgreSQL data
+  mongo_data:     # For MongoDB data
+  redis_data:     # For Redis data (if persistence is needed for results)
+  static_backgrounds: # For shared template images (uploaded by template-service, read by render-service)
+  static_outputs:     # For generated images/PDFs (written by render-service, served by API Gateway or direct)
+  node_modules_frontend: # Cache node_modules for frontend service
