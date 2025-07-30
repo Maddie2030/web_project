@@ -1,5 +1,6 @@
 # auth-service/app/schemas/user.py
 from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime 
 
 class UserCreate(BaseModel):
     """Schema for user registration input."""
@@ -18,6 +19,10 @@ class UserResponse(BaseModel):
     username: str
     email: EmailStr
     is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 
     class Config:
         orm_mode = True # Enables ORM mode for Pydantic (compatible with SQLAlchemy models)

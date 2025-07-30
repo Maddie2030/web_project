@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -31,7 +31,7 @@ async def health_check():
     Health check endpoint for service and DB connectivity.
     """
     try:
-        async with database_config.get_session() as session:
+        async for session in database_config.get_session():
             await session.execute(text("SELECT 1"))
         return {
             "status": "ok",
@@ -45,6 +45,17 @@ async def health_check():
             detail=f"Health check failed: {e}"
         )
 
+
+
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to Auth Service"}
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+    )

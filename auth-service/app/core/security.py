@@ -2,6 +2,7 @@
 import os
 from datetime import datetime, timedelta
 from typing import Union
+import uuid
 
 from passlib.context import CryptContext # For password hashing
 from jose import JWTError, jwt # For JWT handling
@@ -37,7 +38,7 @@ def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire,"jti": str(uuid.uuid4()) } )
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
