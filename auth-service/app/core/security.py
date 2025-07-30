@@ -2,28 +2,21 @@
 import os
 from datetime import datetime, timedelta
 from typing import Union
-import uuid
+import uuid # For jti claim
 
-from passlib.context import CryptContext # For password hashing
-from jose import JWTError, jwt # For JWT handling
-from dotenv import load_dotenv # For local development environment variables
+from passlib.context import CryptContext
+from jose import JWTError, jwt, ExpiredSignatureError # JWSAlgorithmError # Import specific JWT errors
+from dotenv import load_dotenv
 
-# Load environment variables for local development
+# Add these imports for database interaction if not already present
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from ..models.user import User # Import your User model
+
 load_dotenv()
 
-# --- Password Hashing Configuration ---
-# bcrypt is recommended for password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-def hash_password(password: str) -> str:
-    """Hashes a plain-text password using bcrypt."""
-    return pwd_context.hash(password)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain-text password against a hashed password."""
-    return pwd_context.verify(plain_password, hashed_password)
-
-# --- JWT Configuration ---
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
@@ -31,16 +24,56 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 30))
 if not SECRET_KEY:
     raise ValueError("SECRET_KEY environment variable is not set. Please set it for JWT security.")
 
+
+# --- Existing functions (keep them as they are) ---
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return pwd_context.verify(plain_password, hashed_password)
+
 def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None) -> str:
-    """Creates a JWT access token."""
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
         expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire,"jti": str(uuid.uuid4()) } )
+
+    to_encode.update({
+        "exp": expire,
+        "jti": str(uuid.uuid4())
+    })
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-# You would typically have a decode_token function as well for authentication logic
-# but that will be built into dependencies later.
+# --- NEW: Function to decode and verify JWT ---
+def decode_access_token(token: str) -> dict:
+    """
+    Decodes and verifies a JWT access token.
+
+    Raises:
+        ExpiredSignatureError: If the token has expired.
+        JWTError: If the token is invalid for any other reason (e.g., bad signature).
+    Returns:
+        dict: The decoded payload if valid.
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except ExpiredSignatureError:
+        # Re-raise with a more specific error for easier handling in dependencies
+        raise ExpiredSignatureError("Token has expired")
+    except JWTError:
+        # Catch all other JWT related errors
+        raise JWTError("Could not validate credentials")
+
+
+# --- NEW: Function to get a user by username from DB ---
+async def get_user_by_username(session: AsyncSession, username: str) -> Union[User, None]:
+    """
+    Retrieves a user from the database by username.
+    """
+    query = select(User).where(User.username == username)
+    result = await session.execute(query)
+    user = result.scalar_one_or_none()
+    return user
