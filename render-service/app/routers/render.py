@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, status
 from PIL import Image, ImageDraw, ImageFont
 
+
 from app.schemas.render import (
     ImageRenderRequest,
     ImageRenderResponse,
@@ -106,3 +107,43 @@ async def generate_image(request: ImageRenderRequest):
 
     # 6. Return the URL of the newly created image
     return ImageRenderResponse(image_url=f"/static/outputs/{unique_filename}")
+
+@router.post("/generate-pdf", response_model=PDFRenderResponse, status_code=status.HTTP_201_CREATED)
+async def generate_pdf(request: ImageRenderRequest):
+    """Generates a customized PDF from a template, including a rendered image."""
+    # 1. Fetch template and generate image internally
+    image_path = render_image_from_template(request)
+
+    # 2. Use WeasyPrint to convert to PDF
+    try:
+        # Create a simple HTML document with the generated image
+        image_url_for_html = f"file://{image_path}"
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Generated PDF</title>
+            <style>
+                body {{ margin: 0; padding: 0; }}
+                img {{ max-width: 100%; height: auto; display: block; }}
+            </style>
+        </head>
+        <body>
+            <img src="{image_url_for_html}" />
+        </body>
+        </html>
+        """
+        html = HTML(string=html_content, base_url=".")
+
+        # 3. Save the generated PDF
+        pdf_filename = f"{uuid.uuid4()}.pdf"
+        pdf_path = os.path.join(STATIC_OUTPUTS_PATH, pdf_filename)
+        html.write_pdf(pdf_path)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate PDF: {e}"
+        )
+
+    # 4. Return URL of the generated PDF
+    return PDFRenderResponse(pdf_url=f"/static/outputs/{pdf_filename}")

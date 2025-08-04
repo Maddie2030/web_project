@@ -34,3 +34,7 @@ class TemplateServiceResponse(BaseModel):
 
     class Config:
         allow_population_by_field_name = True
+
+class PDFRenderResponse(BaseModel):
+    """The schema for the successful response after a PDF is generated."""
+    pdf_url: str
