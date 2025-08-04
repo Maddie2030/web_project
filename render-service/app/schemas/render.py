@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 from uuid import UUID
 
@@ -27,6 +27,10 @@ class TemplateServiceTextBlock(BaseModel):
 
 class TemplateServiceResponse(BaseModel):
     """The schema for the complete template object received from the template-service."""
-    id: UUID
+    id: UUID = Field(alias="_id")
+    name: str
     image_path: str
     text_blocks: List[TemplateServiceTextBlock]
+
+    class Config:
+        allow_population_by_field_name = True

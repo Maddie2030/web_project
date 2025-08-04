@@ -1,4 +1,4 @@
-# user-profile-service/app/db/template.py
+# Template-service/app/db/template.py
 from uuid import UUID, uuid4
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorClient

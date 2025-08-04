@@ -1,4 +1,5 @@
-# user-profile-service/app/schemas/template.py
+# Template-service/app/schemas/template.py
+
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List
 from uuid import UUID, uuid4
@@ -23,7 +24,7 @@ class TemplateCreate(TemplateBase):
 class TemplateDB(TemplateBase):
     model_config = ConfigDict(
         populate_by_name=True,
-        json_encoders={UUID: str}
+        json_encoders={UUID: str},
+        allow_population_by_field_name=True
     )
-
     id: UUID = Field(alias="_id", default_factory=uuid4)

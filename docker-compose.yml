@@ -324,6 +324,7 @@ services:
     volumes:
       - ./render-service:/app
       - ./render-service/static/outputs:/app/static/outputs
+      - static_backgrounds:/app/static/backgrounds
     ports:
       - "8002:8000"
     env_file:

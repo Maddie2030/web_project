@@ -1,4 +1,4 @@
-# user-profile-service/app/main.py
+# Template-service/app/main.py
 from fastapi import FastAPI, status
 from contextlib import asynccontextmanager
 import uvicorn

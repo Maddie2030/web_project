@@ -1,4 +1,5 @@
-# user-profile-service/app/routers/template.py
+# Template-service/app/routers/template.py
+
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from typing import List, Annotated
 import os
@@ -22,11 +23,18 @@ def get_db_client():
 async def get_all_templates_endpoint(
     db: Annotated[AsyncIOMotorClient, Depends(get_db_client)],
 ):
-    """
-    Fetches a list of all available templates.
-    """
     templates = await get_all_templates(db)
     return templates
+
+@router.get("/{template_id}", response_model=TemplateDB)
+async def get_template_by_id(
+    template_id: str,
+    db: Annotated[AsyncIOMotorClient, Depends(get_db_client)],
+):
+    template = await db.templates.find_one({"_id": template_id})
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    return TemplateDB(**template)
 
 @router.post("/upload", response_model=TemplateDB, status_code=status.HTTP_201_CREATED)
 async def upload_template_endpoint(
@@ -35,9 +43,6 @@ async def upload_template_endpoint(
     text_blocks_json: Annotated[str, Form()],
     image: Annotated[UploadFile, File()]
 ):
-    """
-    Accepts an image and template metadata, validates it, and saves it.
-    """
     allowed_formats = ["image/jpeg", "image/png"]
     if image.content_type not in allowed_formats:
         raise HTTPException(
