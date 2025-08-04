@@ -343,6 +343,17 @@ services:
     networks:
       - app-network
 
+  worker-service:
+    build:
+      context: ./worker-service
+    container_name: worker-service
+    command: celery -A celery_app worker --loglevel=info -Q render_queue
+    restart: always
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
   # --- Placeholder for Template Service ---
   # template-service:
   #   image: template-service-image:latest # Placeholder image, replace with your actual build context
@@ -356,6 +367,7 @@ volumes:
   postgres_data:
   mongo_data:
   static_backgrounds:
+  static_outputs:
 
 networks:
   app-network:
