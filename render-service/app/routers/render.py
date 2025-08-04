@@ -1,84 +1,107 @@
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import ValidationError
-from typing import Dict, Any
-from PIL import Image, ImageDraw, ImageFont
+import os
 import requests
 import uuid
-import os
+from fastapi import APIRouter, HTTPException, status
+from PIL import Image, ImageDraw, ImageFont
 
-from app.schemas.render import ImageRenderRequest, ImageRenderResponse, TemplateServiceResponse
+from app.schemas.render import (
+    ImageRenderRequest,
+    ImageRenderResponse,
+    TemplateServiceResponse,
+    TextBlockRequest
+)
 
 router = APIRouter(prefix="/api/v1", tags=["render"])
 
-# Constants
+# Environment variables are loaded at startup
 TEMPLATE_SERVICE_URL = os.getenv("TEMPLATE_SERVICE_URL")
-STATIC_OUTPUTS_PATH = "/app/static/outputs"
 STATIC_BACKGROUNDS_PATH = "/app/static/backgrounds"
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" # A standard font in many Linux distros
+STATIC_OUTPUTS_PATH = "/app/static/outputs"
 
-@router.post("/generate-image", response_model=ImageRenderResponse)
+# A font path that is available in the Docker container's base image
+FONT_PATH = "/usr/share/fonts/dejavu/DejaVuSans.ttf" 
+
+@router.post("/generate-image", response_model=ImageRenderResponse, status_code=status.HTTP_201_CREATED)
 async def generate_image(request: ImageRenderRequest):
     """
-    Generates a custom image from a template with user-provided text.
+    Generates a customized image based on a template and user-provided text.
     """
-    # 1. Make internal HTTP request to template-service
     if not TEMPLATE_SERVICE_URL:
-        raise HTTPException(status_code=500, detail="TEMPLATE_SERVICE_URL is not configured.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="TEMPLATE_SERVICE_URL is not configured."
+        )
 
+    # 1. Make internal HTTP request to template-service
     try:
-        response = requests.get(f"{TEMPLATE_SERVICE_URL}/templates/{request.template_id}")
-        response.raise_for_status()
+        template_url = f"{TEMPLATE_SERVICE_URL}/api/v1/templates/{request.template_id}"
+        response = requests.get(template_url)
+        response.raise_for_status() # Raise an error for bad status codes
         template_data = response.json()
     except requests.exceptions.RequestException as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch template metadata: {e}")
-
-    # 2. Validate received template data
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch template metadata from template-service: {e}"
+        )
+    
+    # 2. Validate received template data using our Pydantic model
     try:
         template = TemplateServiceResponse(**template_data)
-    except ValidationError:
-        raise HTTPException(status_code=500, detail="Invalid template data received from template-service.")
-    
-    # Check if a background image path exists
-    if not template.image_path:
-        raise HTTPException(status_code=404, detail="Template does not have a background image path.")
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Invalid template data received from template-service: {e}"
+        )
 
-    # 3. Load background image from static/backgrounds
+    # Construct the full path to the background image
     background_path = os.path.join(STATIC_BACKGROUNDS_PATH, os.path.basename(template.image_path))
+    
     if not os.path.exists(background_path):
-        raise HTTPException(status_code=404, detail=f"Background image not found at {background_path}.")
-
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Background image not found at path: {background_path}"
+        )
+    
+    # 3. Load the background image using Pillow
     try:
         image = Image.open(background_path)
     except IOError:
-        raise HTTPException(status_code=500, detail="Failed to load background image.")
-    
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="Failed to load background image with Pillow."
+        )
+
     draw = ImageDraw.Draw(image)
 
     # 4. Iterate and draw text onto the image
-    for block_data in request.text_data:
+    for i, block_request in enumerate(request.text_data):
+        if i >= len(template.text_blocks):
+            break
+
+        template_block = template.text_blocks[i]
         try:
-            font = ImageFont.truetype(FONT_PATH, block_data.font_size)
+            font = ImageFont.truetype(FONT_PATH, template_block.font_size)
         except IOError:
-            # Fallback to a default font if specified font is not found
-            font = ImageFont.load_default()
+            font = ImageFont.load_default() # Fallback to a default font
 
         draw.text(
-            (block_data.x, block_data.y),
-            block_data.user_text,
-            fill=block_data.color,
+            (template_block.x, template_block.y),
+            block_request.user_text,
+            fill=template_block.color,
             font=font
         )
     
-    # Ensure output directory exists
-    os.makedirs(STATIC_OUTPUTS_PATH, exist_ok=True)
-
     # 5. Save the generated image with a unique filename
+    os.makedirs(STATIC_OUTPUTS_PATH, exist_ok=True)
     unique_filename = f"{uuid.uuid4()}.png"
     output_path = os.path.join(STATIC_OUTPUTS_PATH, unique_filename)
     try:
         image.save(output_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save generated image: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Failed to save generated image: {e}"
+        )
 
-    # 6. Return URL of the generated image
+    # 6. Return the URL of the newly created image
     return ImageRenderResponse(image_url=f"/static/outputs/{unique_filename}")
