@@ -1,22 +1,33 @@
-from pydantic import BaseModel, Field
+#render-service/app/routers/render.py
+
+from pydantic import BaseModel
 from typing import List
 from uuid import UUID
 
+
 class TextBlockRequest(BaseModel):
-    """Schema for the user-provided text in the request body."""
+    """User-provided text for a single block."""
     user_text: str
 
+
 class ImageRenderRequest(BaseModel):
-    """The main schema for the incoming POST /generate-image request."""
+    """Payload for image or PDF rendering requests."""
     template_id: UUID
     text_data: List[TextBlockRequest]
 
+
 class ImageRenderResponse(BaseModel):
-    """The schema for the successful response, containing the URL of the new image."""
+    """Response schema for generated image."""
     image_url: str
 
+
+class PDFRenderResponse(BaseModel):
+    """Response schema for generated PDF."""
+    pdf_url: str
+
+
 class TemplateServiceTextBlock(BaseModel):
-    """The schema for a text block received from the template-service."""
+    """Metadata for a template’s text block."""
     x: int
     y: int
     width: int
@@ -25,16 +36,9 @@ class TemplateServiceTextBlock(BaseModel):
     color: str
     default_text: str
 
+
 class TemplateServiceResponse(BaseModel):
-    """The schema for the complete template object received from the template-service."""
-    id: UUID = Field(alias="_id")
-    name: str
+    """Metadata for a template from the template-service."""
+    id: UUID
     image_path: str
     text_blocks: List[TemplateServiceTextBlock]
-
-    class Config:
-        allow_population_by_field_name = True
-
-class PDFRenderResponse(BaseModel):
-    """The schema for the successful response after a PDF is generated."""
-    pdf_url: str

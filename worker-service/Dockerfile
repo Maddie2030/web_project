@@ -1,29 +1,16 @@
-# Dockerfile for Worker Service (FastAPI and Celery Worker)
-FROM python:3.10-slim-bullseye
+# Use a Python 3.10 slim image
+FROM python:3.10-slim
 
-# Install system dependencies for WeasyPrint (same as render-service)
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libffi-dev \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libgdk-pixbuf2.0-dev \
-    libxml2-dev \
-    libxslt1-dev \
-    fonts-dejavu \
-    fonts-liberation \
-    fonts-noto \
-    && rm -rf /var/lib/apt/lists/*
-
+# Set the working directory
 WORKDIR /app
 
+# Copy the requirements file and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy the rest of the application code
 COPY . .
 
-EXPOSE 8000 # If worker-service also runs a FastAPI endpoint
-
-# Default CMD for the FastAPI part of worker-service
-# This will be overridden for the actual Celery worker process in docker-compose.yml
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Set the default command to run the Celery worker
+# The -A option specifies the Celery application, -Q specifies the queue
+CMD ["celery", "-A", "celery_app", "worker", "--loglevel=info", "-Q", "render_queue"]

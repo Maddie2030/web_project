@@ -315,6 +315,11 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+    healthcheck:  
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # --- New Render Service ---
   render-service:
@@ -322,9 +327,8 @@ services:
     container_name: render-service
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - ./render-service:/app
-      - ./render-service/static/outputs:/app/static/outputs
       - static_backgrounds:/app/static/backgrounds
+      - static_outputs:/app/static/outputs
     ports:
       - "8002:8000"
     env_file:
@@ -344,6 +348,17 @@ services:
     networks:
       - app-network
 
+  worker-service:
+    build:
+      context: ./worker-service
+    container_name: worker-service
+    command: celery -A celery_app worker --loglevel=info -Q render_queue
+    restart: always
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
   # --- Placeholder for Template Service ---
   # template-service:
   #   image: template-service-image:latest # Placeholder image, replace with your actual build context
@@ -357,6 +372,7 @@ volumes:
   postgres_data:
   mongo_data:
   static_backgrounds:
+  static_outputs:
 
 networks:
   app-network:
