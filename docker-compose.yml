@@ -352,7 +352,7 @@ services:
     build:
       context: ./worker-service
     container_name: worker-service
-    command: celery -A celery_app worker --loglevel=info -Q render_queue
+    command: celery -A app.celery_app worker --loglevel=info -Q render_queue
     restart: always
     depends_on:
       - redis
