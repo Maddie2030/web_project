@@ -1,6 +1,6 @@
 #render-service/app/schemas/render.py
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List
 from uuid import UUID
 
@@ -17,6 +17,9 @@ class ImageRenderResponse(BaseModel):
     """Schema for a successful response after image generation."""
     image_url: str
 
+class PDFRenderResponse(BaseModel):
+    pdf_url: str 
+
 class TemplateServiceTextBlock(BaseModel):
     x: int
     y: int
@@ -27,7 +30,12 @@ class TemplateServiceTextBlock(BaseModel):
     default_text: str
 
 class TemplateServiceResponse(BaseModel):
-    id: UUID
+    id: UUID = Field(alias="_id")
     image_path: str
     text_blocks: List[TemplateServiceTextBlock]
 
+    model_config = ConfigDict(
+        populate_by_name=True,
+        allow_population_by_field_name=True,
+        json_encoders={UUID: str}
+    )

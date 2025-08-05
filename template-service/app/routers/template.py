@@ -6,7 +6,7 @@ import os
 from uuid import uuid4
 from motor.motor_asyncio import AsyncIOMotorClient
 from json import loads
-
+from uuid import UUID
 from ..schemas.template import TemplateCreate, TemplateDB, TextBlock
 from ..db.mongodb import get_database
 from ..db.template import create_template, get_all_templates, get_template
@@ -30,10 +30,17 @@ async def get_template_by_id(
     template_id: str,
     db: Annotated[AsyncIOMotorClient, Depends(get_db_client)],
 ):
-    result = await get_template(db, template_id)
+    # Convert string to UUID here
+    try:
+        template_uuid = UUID(template_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format for template_id")
+
+    result = await get_template(db, template_uuid)
     if not result:
         raise HTTPException(status_code=404, detail="Template not found")
     return result
+
 
 @router.post("/upload", response_model=TemplateDB, status_code=status.HTTP_201_CREATED)
 async def upload_template_endpoint(
