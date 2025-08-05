@@ -70,6 +70,12 @@ def generate_pdf_from_image_task(self, image_path: str) -> str:
         pdf_path = os.path.join(STATIC_OUTPUTS_PATH, pdf_filename)
         
         html.write_pdf(pdf_path)
+        
+        # --- NEW CODE: Cleanup temporary image file ---
+        if os.path.exists(image_path):
+            os.remove(image_path)
+        # -----------------------------------------------
+
         return f"/static/outputs/{pdf_filename}"
 
     except Exception as e:

@@ -36,6 +36,6 @@ class TemplateServiceResponse(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
-        allow_population_by_field_name=True,
+        validate_by_name=True,
         json_encoders={UUID: str}
     )

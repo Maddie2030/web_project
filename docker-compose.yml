@@ -354,8 +354,15 @@ services:
     container_name: worker-service
     command: celery -A app.celery_app worker --loglevel=info -Q render_queue
     restart: always
+    volumes:
+      # Worker needs access to backgrounds for reading and outputs for writing.
+      - static_backgrounds:/app/static/backgrounds
+      - static_outputs:/app/static/outputs
+    env_file:
+      - ./worker-service/.env
     depends_on:
       - redis
+      - template-service
     networks:
       - app-network
 
