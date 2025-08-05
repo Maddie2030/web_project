@@ -6,13 +6,11 @@ from app.routers.render import router as render_router
 
 app = FastAPI(
     title="Render Service API",
-    description="Generate images and PDFs from templates."
+    description="A microservice for generating rendered documents and images from templates."
 )
 
 app.include_router(render_router)
 
-
 @app.get("/")
 def read_root():
-    """Health check endpoint."""
-    return {"message": "Render Service is up and running."}
+    return {"message": "Hello, World! Render Service is up and running."}

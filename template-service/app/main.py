@@ -1,46 +1,59 @@
 # Template-service/app/main.py
 
+from fastapi import FastAPI, status
+from contextlib import asynccontextmanager
+import uvicorn
 import os
 from dotenv import load_dotenv
-from fastapi import FastAPI, status
 from fastapi.staticfiles import StaticFiles
-from contextlib import asynccontextmanager
 
-from app.db.mongodb import connect_to_mongo, close_mongo_connection, get_database
-from app.routers.template import router as template_router
+from .db.mongodb import connect_to_mongo, close_mongo_connection, get_database
+from .routers import template as template_router
 
 load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize and terminate resources on startup/shutdown."""
+    print("Template Service: Starting up...")
     await connect_to_mongo()
     yield
+    print("Template Service: Shutting down...")
     await close_mongo_connection()
 
 app = FastAPI(
-    title="Template Service API",
+    title="Template Service",
     version="0.1.0",
-    description="Microservice for managing templates.",
+    description="Microservice for managing Templates.",
     lifespan=lifespan
 )
 
-# Mount static backgrounds
+# Mount static directory for template images
 app.mount("/static", StaticFiles(directory="/app/static"), name="static")
-app.include_router(template_router)
 
-@app.get("/", status_code=status.HTTP_200_OK)
+# Include the template router
+app.include_router(template_router.router, prefix="/api/v1")
+
+@app.get("/")
 async def read_root():
-    return {"message": "Template Service is up and running."}
+    return {"message": "Welcome to Template service"}
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def health_check():
-    """Return service and database health status."""
-    db = get_database()
-    status_db = "disconnected"
-    try:
-        await db.command("ping")
-        status_db = "connected"
-    except Exception:
-        status_db = "error"
-    return {"status": "ok", "service": "template-service", "database": status_db}
+    database = get_database()
+    db_status = "disconnected"
+    if database is not None:
+        try:
+            await database.command("ping")
+            db_status = "connected"
+        except Exception:
+            db_status = "error"
+    return {
+        "status": "ok",
+        "service": "Template-service",
+        "database": db_status
+    }
+
+if __name__ == "__main__":
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", 8000))
+    uvicorn.run(app, host=host, port=port)

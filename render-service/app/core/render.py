@@ -1,148 +1,114 @@
 #render-service/app/render.py
 
 import os
+import requests
 import uuid
 import logging
-import requests
 from fastapi import HTTPException, status
 from PIL import Image, ImageDraw, ImageFont
 from weasyprint import HTML
 
-from app.schemas.render import (
-    ImageRenderRequest,
-    TemplateServiceResponse,
-)
+from app.schemas.render import TemplateServiceResponse, ImageRenderRequest
 
-logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Constants
 TEMPLATE_SERVICE_URL = os.getenv("TEMPLATE_SERVICE_URL")
 STATIC_BACKGROUNDS_PATH = "/app/static/backgrounds"
 STATIC_OUTPUTS_PATH = "/app/static/outputs"
 FONT_PATH = "/usr/share/fonts/dejavu/DejaVuSans.ttf"
 
-
 class RenderingCore:
-    """Core logic for rendering images and PDFs from templates."""
-
     def __init__(self, request: ImageRenderRequest):
         self.request = request
         self.template = self._fetch_template()
 
     def _fetch_template(self) -> TemplateServiceResponse:
-        """Fetch and validate template metadata."""
+        logger.info(f"Fetching template metadata for ID: {self.request.template_id}")
         if not TEMPLATE_SERVICE_URL:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="TEMPLATE_SERVICE_URL is not configured."
-            )
-
-        url = f"{TEMPLATE_SERVICE_URL}/api/v1/templates/{self.request.template_id}"
+            raise HTTPException(status_code=500, detail="TEMPLATE_SERVICE_URL is not configured.")
         try:
-            resp = requests.get(url)
-            resp.raise_for_status()
-            return TemplateServiceResponse(**resp.json())
-        except requests.RequestException as e:
-            logger.error("Template fetch error: %s", e)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to fetch template: {e}"
-            )
+            template_url = f"{TEMPLATE_SERVICE_URL}/api/v1/templates/{self.request.template_id}"
+            response = requests.get(template_url)
+            response.raise_for_status()
+            return TemplateServiceResponse(**response.json())
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Failed to fetch template from template-service: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to fetch template metadata: {e}")
         except Exception as e:
-            logger.error("Template validation error: %s", e)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Invalid template data: {e}"
-            )
+            logger.error(f"Invalid template data received: {e}")
+            raise HTTPException(status_code=500, detail=f"Invalid template data received: {e}")
 
-    def _load_background(self) -> Image.Image:
-        """Load the background image from disk."""
-        path = os.path.join(
-            STATIC_BACKGROUNDS_PATH,
-            os.path.basename(self.template.image_path)
-        )
-        if not os.path.exists(path):
-            logger.error("Background not found: %s", path)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Background image not found at {path}"
-            )
-
-        try:
-            return Image.open(path)
-        except IOError as e:
-            logger.error("Pillow load error: %s", e)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to load background image."
-            )
-
-    def _render_text(self, image: Image.Image) -> Image.Image:
-        """Draw user text onto image using template metadata."""
+    def _render_text_on_image(self, image: Image.Image) -> Image.Image:
         draw = ImageDraw.Draw(image)
-        for idx, block_meta in enumerate(self.template.text_blocks):
-            user_text = (
-                self.request.text_data[idx].user_text
-                if idx < len(self.request.text_data)
-                else block_meta.default_text
-            )
+        for i, block_request in enumerate(self.request.text_data):
+            if i >= len(self.template.text_blocks):
+                logger.warning(f"Too much text data provided for template {self.template.id}. Ignoring extra.")
+                break
+            template_block = self.template.text_blocks[i]
             try:
-                font = ImageFont.truetype(FONT_PATH, block_meta.font_size)
+                font = ImageFont.truetype(FONT_PATH, template_block.font_size)
             except IOError:
+                logger.warning(f"Font not found at {FONT_PATH}. Using default font.")
                 font = ImageFont.load_default()
-
             draw.text(
-                (block_meta.x, block_meta.y),
-                user_text,
-                fill=block_meta.color,
+                (template_block.x, template_block.y),
+                block_request.user_text,
+                fill=template_block.color,
                 font=font
             )
         return image
 
-    def _save_file(self, image: Image.Image, ext: str) -> str:
-        """Save an image or PDF and return its path."""
-        os.makedirs(STATIC_OUTPUTS_PATH, exist_ok=True)
-        filename = f"{uuid.uuid4()}.{ext}"
-        path = os.path.join(STATIC_OUTPUTS_PATH, filename)
-        try:
-            if ext.lower() == "png":
-                image.save(path)
-            else:
-                # For PDF, image is HTML rendered via WeasyPrint
-                pass
-            return path
-        except Exception as e:
-            logger.error("Save file error: %s", e)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to save file: {e}"
-            )
-
     def generate_image(self) -> str:
-        """Generate and save a PNG image; return its filesystem path."""
-        img = self._load_background()
-        img = self._render_text(img)
-        return self._save_file(img, "png")
+        logger.info(f"Starting image generation for template ID: {self.template.id}")
+        background_path = os.path.join(STATIC_BACKGROUNDS_PATH, os.path.basename(self.template.image_path))
+        if not os.path.exists(background_path):
+            logger.error(f"Background image not found at {background_path}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Background image not found at path: {background_path}"
+            )
+        try:
+            image = Image.open(background_path)
+            image = self._render_text_on_image(image)
+            os.makedirs(STATIC_OUTPUTS_PATH, exist_ok=True)
+            unique_filename = f"{uuid.uuid4()}.png"
+            output_path = os.path.join(STATIC_OUTPUTS_PATH, unique_filename)
+            image.save(output_path)
+            logger.info(f"Image saved successfully at {output_path}")
+            return output_path
+        except IOError as e:
+            logger.error(f"File I/O error during image generation: {e}")
+            raise HTTPException(status_code=500, detail="Failed to load or save image file.")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred during image generation: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate image: {e}")
 
     def generate_pdf(self) -> str:
-        """Generate and save a PDF; return its filesystem path."""
+        logger.info(f"Starting PDF generation for template ID: {self.template.id}")
         image_path = self.generate_image()
-        html = HTML(string=f"""
-            <!DOCTYPE html>
-            <html><body style="margin:0;padding:0">
-            <img src="file://{image_path}" style="width:100%;height:auto" />
-            </body></html>
-        """, base_url=".")
-        os.makedirs(STATIC_OUTPUTS_PATH, exist_ok=True)
-        pdf_filename = f"{uuid.uuid4()}.pdf"
-        pdf_path = os.path.join(STATIC_OUTPUTS_PATH, pdf_filename)
         try:
+            image_url_for_html = f"file://{image_path}"
+            html_content = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <style>
+                    body {{ margin: 0; padding: 0; }}
+                    img {{ max-width: 100%; height: auto; display: block; }}
+                </style>
+            </head>
+            <body>
+                <img src="{image_url_for_html}" />
+            </body>
+            </html>
+            """
+            html = HTML(string=html_content, base_url=".")
+            pdf_filename = f"{uuid.uuid4()}.pdf"
+            pdf_path = os.path.join(STATIC_OUTPUTS_PATH, pdf_filename)
             html.write_pdf(pdf_path)
+            logger.info(f"PDF saved successfully at {pdf_path}")
             return pdf_path
         except Exception as e:
-            logger.error("PDF generation error: %s", e)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to generate PDF: {e}"
-            )
+            logger.error(f"Failed to generate PDF with WeasyPrint: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {e}")

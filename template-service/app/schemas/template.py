@@ -1,12 +1,10 @@
 # Template-service/app/schemas/template.py
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List
-from uuid import UUID
-
+from uuid import UUID, uuid4
 
 class TextBlock(BaseModel):
-    """Layout metadata for a single text block."""
     x: int
     y: int
     width: int
@@ -15,18 +13,18 @@ class TextBlock(BaseModel):
     color: str
     default_text: str
 
-
-class TemplateCreate(BaseModel):
-    """Payload for creating a new template."""
+class TemplateBase(BaseModel):
     name: str
     image_path: str
     text_blocks: List[TextBlock]
 
+class TemplateCreate(TemplateBase):
+    pass
 
-class TemplateDB(TemplateCreate):
-    """Template model as stored in the database."""
-    id: UUID = Field(..., alias="_id")
-
-    class Config:
-        allow_population_by_field_name = True
-        json_encoders = {UUID: lambda u: str(u)}
+class TemplateDB(TemplateBase):
+    model_config = ConfigDict(
+        populate_by_name=True,
+        json_encoders={UUID: str},
+        allow_population_by_field_name=True
+    )
+    id: UUID = Field(alias="_id", default_factory=uuid4)
