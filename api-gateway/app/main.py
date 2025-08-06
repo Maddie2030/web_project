@@ -1,12 +1,22 @@
 # api-gateway/app/main.py
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from .middleware import JWTAuthMiddleware
 from .routers import auth, template, render
 
 app = FastAPI(
     title="API Gateway",
     description="Gateway for all microservices.",
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Define public routes to be excluded from JWT validation

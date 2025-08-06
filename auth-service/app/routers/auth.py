@@ -137,7 +137,7 @@ async def register_user(
     return db_user
 
 # --- Endpoint: User Login and Token Generation (/token) ---
-@router.post("/token", response_model=Token)
+@router.post("/login", response_model=Token)
 async def login_for_access_token(
     user_in: UserLogin, # Pydantic model for validating the incoming request body for login
     session: AsyncSession = Depends(get_session) # Dependency Injection: Provides an async database session

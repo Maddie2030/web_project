@@ -6,48 +6,60 @@ import os
 
 router = APIRouter()
 
-# Instantiate a single httpx.AsyncClient for reuse
-# This is more efficient as it manages the connection pool.
+# Create a global httpx.AsyncClient to be reused (manage lifecycle separately if possible)
 client = httpx.AsyncClient()
 
-# Get the downstream service URL from environment variables
+# Get the downstream auth service URL from environment variables
 AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
 
-@router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
+# List of hop-by-hop headers that should NOT be forwarded to the client
+HOP_BY_HOP_HEADERS = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+}
+
+@router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def forward_auth_request(path: str, request: Request):
-    """Forwards all requests to the Authentication service."""
-    url = f"{AUTH_SERVICE_URL}/{path}"
+    # Preserve the full original path to properly forward prefix /api/v1/auth and subpaths
+    url = f"{AUTH_SERVICE_URL}{request.url.path}"
+
+    # Copy and make headers mutable
+    headers = dict(request.headers)
+    # Remove Host header to avoid issues forwarding to downstream service
+    headers.pop("host", None)
 
     try:
-        # Forward the request, including headers, body, and query parameters
-        # Note: We create a copy of the headers and remove the host header
-        # to prevent routing issues with the downstream service.
-        headers = request.headers.mutablecopy()
-        if "host" in headers:
-            del headers["host"]
-            
         response = await client.request(
             method=request.method,
             url=url,
             headers=headers,
             params=request.query_params,
-            content=await request.body()
+            content=await request.body(),
         )
-        
-        # Return the response as is, preserving headers and status code
+
+        # Filter out hop-by-hop headers before returning response
+        filtered_headers = {
+            k: v for k, v in response.headers.items() if k.lower() not in HOP_BY_HOP_HEADERS
+        }
+
         return Response(
             content=response.content,
             status_code=response.status_code,
-            headers=response.headers
+            headers=filtered_headers,
+            media_type=response.headers.get("content-type"),
         )
     except httpx.ConnectError as e:
-        # Handle cases where the downstream service is unreachable
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=f"Auth Service is unavailable: {e}"
         )
     except Exception as e:
-        # Catch any other unexpected errors
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {e}"
