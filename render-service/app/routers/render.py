@@ -20,7 +20,7 @@ class TaskQueuedResponse(BaseModel):
     task_id: str
     status: str
 
-router = APIRouter(prefix="/api/v1", tags=["render"])
+router = APIRouter(prefix="/api/v1/render", tags=["render"])
 
 @router.post(
     "/generate-image",
