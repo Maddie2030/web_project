@@ -1,7 +1,7 @@
 
 # render-service/app/main.py
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from app.routers.render import router as render_router
 
 app = FastAPI(

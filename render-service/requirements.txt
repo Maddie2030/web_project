@@ -12,5 +12,6 @@ html5lib==1.1 # Required by WeasyPrint
 celery==5.4.0
 redis==5.0.0
 python-dotenv==1.0.1
+httpx==0.27.0
 
 
