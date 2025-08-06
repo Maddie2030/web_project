@@ -11,7 +11,8 @@ TEMPLATE_SERVICE_URL = os.getenv("TEMPLATE_SERVICE_URL", "http://template-servic
 async def forward_template_request(path: str, request: Request):
     """Forwards requests to the Template service."""
     async with httpx.AsyncClient() as client:
-        url = f"{TEMPLATE_SERVICE_URL}/{path}"
+        url = f"{TEMPLATE_SERVICE_URL}/api/v1/templates/{path}"
+
         try:
             response = await client.request(
                 method=request.method,
