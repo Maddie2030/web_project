@@ -235,6 +235,37 @@
   # ... (other services) ...
 
 services:
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./api-gateway:/app # Mount code for development/live reloading
+    ports:
+      - "8003:8000" # Map API Gateway port to host
+    environment:
+      # These will be set by the .env file in the container build/runtime
+      - AUTH_SERVICE_URL=http://auth-service:8000
+      - TEMPLATE_SERVICE_URL=http://template-service:8000
+      - RENDER_SERVICE_URL=http://render-service:8000
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY} # From your service's .env.example
+    networks:
+      - app-network
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      template-service:
+        condition: service_healthy
+      render-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"] # Assuming /health endpoint
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   postgres:
     image: postgres:15-alpine
     container_name: postgres
@@ -253,6 +284,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   migrate:
     build: ./auth-service                
@@ -288,6 +320,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
   
 
   mongo:
@@ -333,6 +366,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   # --- New Render Service ---
   render-service:
