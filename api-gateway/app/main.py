@@ -33,7 +33,7 @@ app.add_middleware(JWTAuthMiddleware, public_routes=PUBLIC_ROUTES)
 # Include routers for each microservice
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(template.router, prefix="/api/v1/templates", tags=["Templates"])
-app.include_router(render.router, prefix="/api/v1/render", tags=["Render"])
+app.include_router(render.router, prefix="/api/v1", tags=["Render"])
 
 @app.get("/")
 def read_root():
