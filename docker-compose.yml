@@ -265,6 +265,8 @@ services:
       - SECRET_KEY=${AUTH_SECRET_KEY} # Specific to auth service
       - ALGORITHM=HS256
       - ACCESS_TOKEN_EXPIRE_MINUTES=30
+    ports:
+      - "8000:8000"
     networks:
       - app-network
     depends_on:
