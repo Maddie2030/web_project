@@ -1,9 +1,9 @@
 # auth-service/app/main.py
+
 from fastapi import FastAPI, HTTPException, status, Request, Depends
 from fastapi.responses import JSONResponse
-from sqlalchemy import text, select
-
-from contextlib import asynccontextmanager # New import for lifespan
+from sqlalchemy import select
+from contextlib import asynccontextmanager
 import uvicorn
 import os
 from dotenv import load_dotenv
@@ -12,7 +12,7 @@ from .routers import auth
 from .database import config as database_config
 
 @asynccontextmanager
-async def lifespan(app: FastAPI): # Re-introduced lifespan
+async def lifespan(app: FastAPI):
     print("Auth Service: Starting up...")
     await database_config.init_db()
     print("Auth Service: Database initialized.")
@@ -24,13 +24,13 @@ app = FastAPI(
     title="Auth Service API",
     description="API for user authentication and authorization",
     version="1.0.0",
-    lifespan=lifespan # Linked lifespan
+    lifespan=lifespan
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 
 @app.get("/health", status_code=status.HTTP_200_OK)
-async def health_check(session: database_config.AsyncSession = Depends(database_config.get_session)): # Used Depends
+async def health_check(session: database_config.AsyncSession = Depends(database_config.get_session)):
     try:
         await session.execute(select(1))
         return {
@@ -39,7 +39,6 @@ async def health_check(session: database_config.AsyncSession = Depends(database_
             "database": "connected"
         }
     except Exception as e:
-        print(f"Health check failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Health check failed: {e}"

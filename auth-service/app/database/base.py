@@ -4,5 +4,6 @@ from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
-# Import all your models here so Alembic sees them
+# Ensure models are registered for Alembic
 from app.models import user  # noqa
+
