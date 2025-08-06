@@ -14,3 +14,10 @@ app.include_router(render_router)
 @app.get("/")
 def read_root():
     return {"message": "Hello, World! Render Service is up and running."}
+
+@app.get("/health", status_code=status.HTTP_200_OK)
+def health_check():
+    """
+    Health check endpoint to verify the service is running.
+    """
+    return JSONResponse(content={"status": "ok"})
