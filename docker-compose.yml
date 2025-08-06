@@ -250,6 +250,7 @@ services:
       - TEMPLATE_SERVICE_URL=http://template-service:8000
       - RENDER_SERVICE_URL=http://render-service:8000
       - JWT_SECRET_KEY=${JWT_SECRET_KEY} # From your service's .env.example
+      - REDIS_URL=redis://redis:6379
     networks:
       - app-network
     depends_on:
@@ -258,6 +259,8 @@ services:
       template-service:
         condition: service_healthy
       render-service:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"] # Assuming /health endpoint

@@ -2,11 +2,14 @@
 
 import time
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from .middleware import JWTAuthMiddleware
 from .routers import auth, template, render
 from .settings import settings
+from fastapi_limiter import FastAPILimiter
+from redis.asyncio import Redis
+from fastapi_limiter.depends import RateLimiter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api-gateway")
@@ -16,45 +19,41 @@ app = FastAPI(
     description="Gateway for all microservices.",
 )
 
-# --- Middleware ---
+@app.on_event("startup")
+async def startup():
+    redis = Redis(host="redis", port=6379, db=0)
+    await FastAPILimiter.init(redis)
 
-# 1. Logging Middleware: Logs every incoming request and its response time.
+@app.on_event("shutdown")
+async def shutdown():
+    await FastAPILimiter.close()
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    start_time = time.time()
-    logger.info(f"Incoming Request: {request.method} {request.url.path}")
+    logger.info(f"Incoming request: {request.method} {request.url}")
     response = await call_next(request)
-    process_time = time.time() - start_time
-    logger.info(f"Outgoing Response: {response.status_code} processed in {process_time:.4f}s")
+    logger.info(f"Response status: {response.status_code} for {request.method} {request.url}")
     return response
 
-# 2. CORS Middleware: Allows cross-origin requests.
 app.add_middleware(
     CORSMiddleware,
-    # Use the allow_origins from your settings object for production.
-    # For development, you can set it to ["*"].
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 3. JWT Auth Middleware: Protects routes and validates tokens.
-app.add_middleware(JWTAuthMiddleware, public_routes=settings.public_routes)
+app.add_middleware(JWTAuthMiddleware, public_routes=settings.public_routes)  # or the explicit list
 
-# --- Routers ---
-
-# Include routers for each microservice with correct, non-overlapping prefixes.
+# -- Fix the render router prefix if render-service does not mount `/render`! --
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(template.router, prefix="/api/v1/templates", tags=["Templates"])
 app.include_router(render.router, prefix="/api/v1/render", tags=["Render"])
 
-# --- Root Endpoints ---
-
-@app.get("/")
-def read_root():
+@app.get("/", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
+def root():
     return {"message": "Welcome to the API Gateway"}
 
-@app.get("/health")
+@app.get("/health", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
 def health_check():
     return {"status": "ok"}
