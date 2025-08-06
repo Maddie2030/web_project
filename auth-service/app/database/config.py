@@ -47,16 +47,23 @@ AsyncSessionLocal = sessionmaker(
     expire_on_commit=False
 )
 
-# Dependency for managing database sessions
-@asynccontextmanager
-async def get_session():
-    """Provides an asynchronous SQLAlchemy session for dependency injection."""
-    session = AsyncSessionLocal()
-    try:
+
+from typing import AsyncGenerator
+
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
+    async with AsyncSessionLocal() as session:
         yield session
-    finally:
-        # Ensure the session is closed even if an error occurs
-        await session.close()
+
+# # Dependency for managing database sessions
+# @asynccontextmanager
+# async def get_session():
+#     """Provides an asynchronous SQLAlchemy session for dependency injection."""
+#     session = AsyncSessionLocal()
+#     try:
+#         yield session
+#     finally:
+#         # Ensure the session is closed even if an error occurs
+#         await session.close()
 
 # Optional: database init and shutdown handlers
 async def init_db():

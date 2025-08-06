@@ -1,38 +1,38 @@
-from fastapi import FastAPI, HTTPException, status
+# auth-service/app/main.py
+from fastapi import FastAPI, HTTPException, status, Request, Depends
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from sqlalchemy import text, select
+
+from contextlib import asynccontextmanager # New import for lifespan
+import uvicorn
+import os
+from dotenv import load_dotenv
 
 from .routers import auth
 from .database import config as database_config
 
-app = FastAPI(
-    title="Auth Service API",
-    description="API for user authentication and authorization",
-    version="1.0.0"
-)
-
-# Include API routers
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI): # Re-introduced lifespan
     print("Auth Service: Starting up...")
     await database_config.init_db()
     print("Auth Service: Database initialized.")
-
-@app.on_event("shutdown")
-async def shutdown_event():
+    yield
     print("Auth Service: Shutting down.")
     await database_config.close_db()
 
+app = FastAPI(
+    title="Auth Service API",
+    description="API for user authentication and authorization",
+    version="1.0.0",
+    lifespan=lifespan # Linked lifespan
+)
+
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+
 @app.get("/health", status_code=status.HTTP_200_OK)
-async def health_check():
-    """
-    Health check endpoint for service and DB connectivity.
-    """
+async def health_check(session: database_config.AsyncSession = Depends(database_config.get_session)): # Used Depends
     try:
-        async with database_config.get_session() as session:
-            await session.execute(text("SELECT 1"))
+        await session.execute(select(1))
         return {
             "status": "ok",
             "service": "auth-service",
@@ -48,3 +48,18 @@ async def health_check():
 @app.get("/")
 async def read_root():
     return {"message": "Welcome to Auth Service"}
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+    )
+
+if __name__ == "__main__":
+    load_dotenv()
+    host = os.getenv("APP_HOST", "0.0.0.0")
+    port = int(os.getenv("APP_PORT", 8000))
+    uvicorn.run(app, host=host, port=port)
