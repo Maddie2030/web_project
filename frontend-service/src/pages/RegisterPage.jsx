@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
 const RegisterPage = () => {
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -16,12 +17,27 @@ const RegisterPage = () => {
       return;
     }
     try {
-      await axios.post('/api/auth/register', { email, password });
+      await axios.post('/api/v1/auth/register', { username, email, password });
       alert('Registration successful! Please log in.');
       navigate('/login');
     } catch (error) {
-      console.error('Registration failed:', error);
-      alert('Registration failed. Please try again.');
+      // Check for a specific error response from the server
+      if (error.response) {
+        if (error.response.status === 409) {
+          alert('Registration failed: Username or email already exists.');
+        } else if (error.response.status === 422) {
+          alert('Registration failed: Please check your input fields and try again.');
+          console.error('Validation Error:', error.response.data);
+        } else {
+          // Handle other types of server errors
+          alert(`Registration failed with status: ${error.response.status}`);
+          console.error('API Error:', error.response.data);
+        }
+      } else {
+        // Handle network errors (e.g., connection refused)
+        alert('Network Error: Could not connect to the server.');
+        console.error('Network Error:', error.message);
+      }
     }
   };
 
@@ -29,6 +45,7 @@ const RegisterPage = () => {
     <div>
       <h2>Register</h2>
       <form onSubmit={handleSubmit}>
+        <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" required />
         <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required />
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required />
         <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Confirm Password" required />
