@@ -19,7 +19,7 @@ os.makedirs(STATIC_DIR, exist_ok=True)
 def get_db_client():
     return get_database()
 
-@router.get("/", response_model=List[TemplateDB])
+@router.get("/templates", response_model=List[TemplateDB])
 async def get_all_templates_endpoint(
     db: Annotated[AsyncIOMotorClient, Depends(get_db_client)],
 ):
@@ -40,7 +40,6 @@ async def get_template_by_id(
     if not result:
         raise HTTPException(status_code=404, detail="Template not found")
     return result
-
 
 @router.post("/upload", response_model=TemplateDB, status_code=status.HTTP_201_CREATED)
 async def upload_template_endpoint(

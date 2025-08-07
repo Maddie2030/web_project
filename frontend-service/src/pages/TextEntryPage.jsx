@@ -70,12 +70,15 @@ const TextEntryPage = () => {
           style={{
             flex: 1,
             position: 'relative',
-            maxWidth: '600px',
+            width: '715px',
+            height: '1144px',
             border: '1px solid black',
-            aspectRatio: '3 / 2', // Adjust to match your image aspect ratio
-            backgroundImage: `url(${template.image_path})`,
+            // aspectRatio: '3 / 2', // Adjust to match your image aspect ratio
+            // backgroundImage: `url(${template.image_path})`,
             backgroundImage: `url(${API_BASE}${template.image_path})`,
-            backgroundSize: 'cover',
+            backgroundSize: 'contain',
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
           }}
         >
           {template.text_blocks.map((block) => (

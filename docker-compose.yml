@@ -422,6 +422,29 @@ services:
     networks:
       - app-network
 
+  # --- Frontend Service ---
+  frontend-service:
+    build: ./frontend-service
+    container_name: frontend-service
+    # Command for Vite dev server - ensures it listens on all interfaces
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./frontend-service:/app # Mount code for development/live reloading
+      - /app/node_modules # Cache node_modules
+    ports:
+      - "3000:5173" # Map React dev server port to host
+    networks:
+      - app-network
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    # A basic health check for the dev server might just check the port
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # --- Placeholder for Template Service ---
   # template-service:
   #   image: template-service-image:latest # Placeholder image, replace with your actual build context
