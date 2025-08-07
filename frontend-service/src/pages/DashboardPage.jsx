@@ -8,6 +8,8 @@ const DashboardPage = () => {
   const token = useAuthStore((state) => state.token);
   const navigate = useNavigate();
 
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
@@ -39,7 +41,11 @@ const DashboardPage = () => {
           templates.map((template) => (
             <div key={template.id} style={{ border: '1px solid #ccc', padding: '10px' }}>
               <h3>{template.name}</h3>
-              <img src={template.preview_image_url} alt={template.name} style={{ width: '100%' }} />
+              <img
+                src={`${API_BASE}${template.image_path}`}
+                alt={template.name}
+                style={{ width: '100%', objectFit: 'cover' }}
+              />
               <button onClick={() => handleSelectTemplate(template.id)}>Select</button>
             </div>
           ))
