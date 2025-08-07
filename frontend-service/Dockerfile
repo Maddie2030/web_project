@@ -1,21 +1,17 @@
-# Dockerfile for Frontend Service (React/Vite - Development)
-FROM node:18-alpine
+# Use a recent Node.js image
+FROM node:20-alpine
 
+# Set the working directory for the container
 WORKDIR /app
 
-# Copy package.json and lock file to leverage Docker layer caching
-# Use yarn.lock if you use yarn, package-lock.json if you use npm
-COPY package.json yarn.lock ./ # If using npm: COPY package.json package-lock.json ./
+# Copy the package.json and package-lock.json to install dependencies
+COPY package*.json ./
 
-# Install dependencies
-RUN yarn install --frozen-lockfile # If using npm: RUN npm install
+# Install project dependencies
+RUN npm install
 
-# Copy the rest of the application code
-COPY . .
+# Expose the port that the Vite dev server runs on
+EXPOSE 5173
 
-# Expose the port Vite's dev server runs on
-EXPOSE 3000
-
-# Command to start the development server
-# This is overridden by docker-compose for convenience, but serves as default
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# The `command` in your docker-compose.yml will override this
+CMD ["npm", "run", "dev"]
