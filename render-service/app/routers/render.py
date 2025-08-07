@@ -38,7 +38,7 @@ async def generate_image_endpoint(request: ImageRenderRequest):
     )
     return TaskQueuedResponse(
         task_id=task.id,
-        status="Task queued. Use GET /api/v1/tasks/{task_id} to check status."
+        status="Task queued. Use GET /api/v1/status/{task_id} to check status."
     )
 
 @router.post(
@@ -60,11 +60,11 @@ async def generate_pdf_endpoint(request: ImageRenderRequest):
     
     return TaskQueuedResponse(
         task_id=task_result.id,
-        status="Task queued. Use GET /api/v1/tasks/{task_id} to check status."
+        status="Task queued. Use GET /api/v1/status/{task_id} to check status."
     )
 
 ## New: Job Status Endpoint
-@router.get("/tasks/{task_id}", response_model=TaskStatusResponse)
+@router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def get_task_status(task_id: str):
     """
     Fetches the current status of a rendering task from the result backend.

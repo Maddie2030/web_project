@@ -8,15 +8,20 @@ const TextEntryPage = () => {
   const { templateId } = useParams();
   const [template, setTemplate] = useState(null);
   const [textInputs, setTextInputs] = useState({});
+  // New state variables for handling the rendering job
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [outputUrl, setOutputUrl] = useState(null);
+  const [error, setError] = useState(null);
+  
   const token = useAuthStore((state) => state.token);
   const navigate = useNavigate();
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003';
 
   useEffect(() => {
     const fetchTemplate = async () => {
       try {
-        const response = await axios.get(`/api/v1/templates/${templateId}`, {
+        const response = await axios.get(`${API_BASE}/api/v1/templates/${templateId}`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -30,13 +35,63 @@ const TextEntryPage = () => {
     if (token && templateId) {
       fetchTemplate();
     }
-  }, [token, templateId]);
+  }, [token, templateId, API_BASE]);
 
   const handleTextChange = (blockId, value) => {
     setTextInputs((prev) => ({
       ...prev,
       [blockId]: value,
     }));
+  };
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    setError(null);
+    setOutputUrl(null);
+
+    try {
+      // 1. Send text data to the render service
+      const response = await axios.post(`${API_BASE}/api/v1/render/generate-image`, {
+        template_id: templateId,
+        text_data: textInputs,
+      }, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const { job_id } = response.data;
+
+      // 2. Start polling for job status
+      const checkStatus = setInterval(async () => {
+        try {
+          const statusResponse = await axios.get(`${API_BASE}/api/v1/render/status/${job_id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+
+          if (statusResponse.data.status === 'completed') {
+            clearInterval(checkStatus);
+            setOutputUrl(statusResponse.data.output_url);
+            setIsGenerating(false);
+          } else if (statusResponse.data.status === 'failed') {
+            clearInterval(checkStatus);
+            setError('Image generation failed.');
+            setIsGenerating(false);
+          }
+        } catch (statusError) {
+          clearInterval(checkStatus);
+          setError('Failed to check job status.');
+          setIsGenerating(false);
+          console.error(statusError);
+        }
+      }, 3000); // Poll every 3 seconds
+
+    } catch (generateError) {
+      console.error('Generation request failed:', generateError);
+      setError('Failed to start image generation.');
+      setIsGenerating(false);
+    }
   };
 
   if (!template) {
@@ -62,40 +117,61 @@ const TextEntryPage = () => {
               />
             </div>
           ))}
-          <button style={{ padding: '0.5rem 1rem' }}>Generate Image</button>
+          <button
+            onClick={handleGenerate}
+            disabled={isGenerating}
+            style={{ padding: '0.5rem 1rem' }}
+          >
+            {isGenerating ? 'Generating...' : 'Generate Image'}
+          </button>
+          
+          {error && <p style={{ color: 'red' }}>{error}</p>}
         </div>
 
-        {/* Right side: Live Preview */}
-        <div
-          style={{
-            flex: 1,
-            position: 'relative',
-            width: '715px',
-            height: '1144px',
-            border: '1px solid black',
-            // aspectRatio: '3 / 2', // Adjust to match your image aspect ratio
-            // backgroundImage: `url(${template.image_path})`,
-            backgroundImage: `url(${API_BASE}${template.image_path})`,
-            backgroundSize: 'contain',
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'center',
-          }}
-        >
-          {template.text_blocks.map((block) => (
+        {/* Right side: Live Preview and Final Output */}
+        <div style={{ flex: 1 }}>
+          {/* Display live preview while no output is available */}
+          {!outputUrl && (
             <div
-              key={block.id}
               style={{
-                position: 'absolute',
-                left: `${block.x}px`,
-                top: `${block.y}px`,
-                fontSize: `${block.font_size}px`,
-                color: block.color,
-                fontFamily: block.font_family,
+                position: 'relative',
+                width: '715px',
+                height: '1144px',
+                border: '1px solid black',
+                backgroundImage: `url(${API_BASE}${template.image_path})`,
+                backgroundSize: 'contain',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'center',
               }}
             >
-              {textInputs[block.id]}
+              {template.text_blocks.map((block) => (
+                <div
+                  key={block.id}
+                  style={{
+                    position: 'absolute',
+                    left: `${block.x}px`,
+                    top: `${block.y}px`,
+                    fontSize: `${block.font_size}px`,
+                    color: block.color,
+                    fontFamily: block.font_family,
+                  }}
+                >
+                  {textInputs[block.id]}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {/* Display final generated image and download link */}
+          {outputUrl && (
+            <div>
+              <h3>Generated Image</h3>
+              <img src={`${API_BASE}${outputUrl}`} alt="Generated Output" style={{ maxWidth: '100%' }} />
+              <a href={`${API_BASE}${outputUrl}`} download>
+                <button style={{ marginTop: '1rem' }}>Download Image</button>
+              </a>
+            </div>
+          )}
         </div>
       </div>
     </div>

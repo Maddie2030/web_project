@@ -14,6 +14,10 @@ class Settings(BaseSettings):
         "/api/v1/auth/login",
         "/health",
         "/"
+        "/docs",
+        "/openapi.json",
+    # Add the static files path to the public routes
+        "/static/{path:path}" 
     ]
 
     model_config = SettingsConfigDict(env_file=".env")
