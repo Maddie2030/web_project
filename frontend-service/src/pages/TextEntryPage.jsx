@@ -1,4 +1,4 @@
-// src/pages/TextEntryPage.jsx
+// frontend-service/src/pages/TextEntryPage.jsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -12,7 +12,7 @@ const TextEntryPage = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputUrl, setOutputUrl] = useState(null);
   const [error, setError] = useState(null);
-  
+
   const token = useAuthStore((state) => state.token);
   const navigate = useNavigate();
 
@@ -50,16 +50,25 @@ const TextEntryPage = () => {
     setOutputUrl(null);
 
     try {
+      // --- UPDATE START ---
+      // Transform the textInputs object into a list of objects as expected by the backend
+      const textDataForBackend = Object.values(textInputs).map(text => ({
+        user_text: text,
+      }));
+      // --- UPDATE END ---
+
       // 1. Send text data to the render service
       const response = await axios.post(`${API_BASE}/api/v1/render/generate-image`, {
         template_id: templateId,
-        text_data: textInputs,
+        text_data: textDataForBackend, // Use the new, correctly formatted data
       }, {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       });
+
+      console.log('Image generation job started successfully:', response.data);
 
       const { job_id } = response.data;
 

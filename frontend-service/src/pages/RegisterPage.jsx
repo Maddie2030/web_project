@@ -1,4 +1,4 @@
-// src/pages/RegisterPage.jsx
+//frontend-service/src/pages/RegisterPage.jsx
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
