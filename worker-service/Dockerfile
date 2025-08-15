@@ -3,14 +3,14 @@
 # worker-service/Dockerfile
 
 # Use a Python 3.10 slim image as the base
-FROM python:3.10-slim
+FROM python:3.11-slim-bookworm
 
 # Install system dependencies needed for Pillow and WeasyPrint
 RUN apt-get update && apt-get install -y \
     libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev \
     fonts-dejavu-core \
     libxml2-dev libxslt1-dev libcairo2-dev libpango1.0-dev \
-    libgdk-pixbuf2.0-dev \
+    libgdk-pixbuf-2.0-dev \
     gcc python3-dev
 
 # Set the working directory inside the container

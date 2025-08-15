@@ -1,5 +1,5 @@
 # Start from a Python image that includes necessary base libraries
-FROM python:3.10-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 # Install system dependencies for WeasyPrint (Cairo, Pango, GDK-Pixbuf)
 # and other useful fonts.
@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     libcairo2-dev \
     libpango1.0-dev \
-    libgdk-pixbuf2.0-dev \
+    libgdk-pixbuf-2.0-dev \
     libxml2-dev \
     libxslt1-dev \
     fonts-dejavu-core \
