@@ -1,16 +1,14 @@
-// frontend-service/src/pages/TextEntryPage.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
-import * as fabric from 'fabric';
-import { FabricImage } from 'fabric';
+import { Canvas, FabricImage, Textbox } from 'fabric';
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
 const defaultFonts = [
   { label: 'DejaVu Sans', value: '/usr/share/fonts/dejavu/DejaVuSans.ttf' },
-  { label: 'Arial (system)', value: '' }, // renderer will fallback if empty
+  { label: 'Arial (system)', value: '' },
 ];
 
 const CANVAS_W = 715;
@@ -29,8 +27,8 @@ const TextEntryPage = () => {
   const [error, setError] = useState(null);
 
   const canvasElRef = useRef(null);
-  const fabricRef = useRef(null); // fabric.Canvas
-  const objMapRef = useRef({}); // title -> fabric.Textbox
+  const fabricRef = useRef(null);
+  const objMapRef = useRef({});
 
   // Fetch template and initialize blocks state
   useEffect(() => {
@@ -41,7 +39,6 @@ const TextEntryPage = () => {
         const { data } = await axios.get(`${API_BASE}/api/v1/templates/${templateId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-
         setTemplate(data);
 
         const init = {};
@@ -75,68 +72,87 @@ const TextEntryPage = () => {
   useEffect(() => {
     if (!template || !canvasElRef.current || !Object.keys(blocks).length) return;
 
-    // Dispose of old canvas if it exists to prevent memory leaks
+    // Dispose of old canvas if it exists
     if (fabricRef.current) {
       fabricRef.current.dispose();
       objMapRef.current = {};
     }
 
-    const canvas = new fabric.Canvas(canvasElRef.current, {
+    const canvas = new Canvas(canvasElRef.current, {
       width: CANVAS_W,
       height: CANVAS_H,
       selection: true,
-      backgroundColor: '#fff',
+      backgroundColor: null, // Transparent background
       preserveObjectStacking: true,
     });
     fabricRef.current = canvas;
 
-    // Background image (template)
-    const bgUrl = `${API_BASE}${template.image_path}`;
-    FabricImage.fromURL(
-      bgUrl,
-      (img) => {
+    // ✅ Correct way to set background image in v6
+    const loadBackgroundAndObjects = async () => {
+      const bgUrl = `${API_BASE}${template.image_path}`;
+      
+      try {
+        // Load the image
+        const img = await FabricImage.fromURL(bgUrl, { crossOrigin: 'anonymous' });
+        
+        // Scale image to fit canvas
         const scaleX = CANVAS_W / img.width;
         const scaleY = CANVAS_H / img.height;
         const scale = Math.min(scaleX, scaleY);
         img.scale(scale);
-        canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
-          top: (CANVAS_H - img.height * scale) / 2,
+        
+        // Position the image
+        img.set({
           left: (CANVAS_W - img.width * scale) / 2,
+          top: (CANVAS_H - img.height * scale) / 2,
           originX: 'left',
           originY: 'top',
+          selectable: false,
+          evented: false,
         });
-      },
-      {
-        crossOrigin: 'anonymous',
-        onError: (err) => console.error('Fabric failed to load image', err),
+        
+        // ✅ Set backgroundImage property directly (v6 way)
+        canvas.backgroundImage = img;
+        
+        // Add text blocks after background is set
+        addTextBlocks();
+        
+        // Render the canvas
+        canvas.renderAll();
+        
+      } catch (err) {
+        console.error('Failed to load background image:', err);
+        // Add text blocks even if background fails
+        addTextBlocks();
+        canvas.renderAll();
       }
-    );
+    };
 
-    // Create Fabric objects for blocks
-    Object.values(blocks).forEach((b) => {
-      const tb = new fabric.Textbox(b.user_text || b.title, {
-        left: b.x,
-        top: b.y,
-        width: b.width,
-        fontSize: b.font_size,
-        fill: b.color,
-        fontWeight: b.bold ? '700' : '400',
-        fontStyle: b.italic ? 'italic' : 'normal',
-        editable: true,
-        lockScalingFlip: true,
-        transparentCorners: false,
-        cornerStyle: 'circle',
-        borderScaleFactor: 1,
-        objectCaching: false,
+    // Function to add text blocks
+    const addTextBlocks = () => {
+      Object.values(blocks).forEach((b) => {
+        const tb = new Textbox(b.user_text || b.title, {
+          left: b.x,
+          top: b.y,
+          width: b.width,
+          fontSize: b.font_size,
+          fill: b.color,
+          fontWeight: b.bold ? '700' : '400',
+          fontStyle: b.italic ? 'italic' : 'normal',
+          editable: true,
+          lockScalingFlip: true,
+          transparentCorners: false,
+          cornerStyle: 'circle',
+          borderScaleFactor: 1,
+          objectCaching: false,
+        });
+
+        canvas.add(tb);
+        objMapRef.current[b.title] = tb;
       });
+    };
 
-      canvas.add(tb);
-      objMapRef.current[b.title] = tb;
-    });
-
-    canvas.renderAll();
-
-    // Event handlers to sync canvas changes back to React state
+    // Event handlers
     const syncToState = (e) => {
       const obj = e.target;
       if (!obj) return;
@@ -173,7 +189,6 @@ const TextEntryPage = () => {
       }));
     };
     
-    // Update selected title on selection change
     const updateSelectedTitle = (e) => {
       const activeObject = e.target;
       if (activeObject) {
@@ -184,11 +199,15 @@ const TextEntryPage = () => {
       }
     };
 
+    // Add event listeners
     canvas.on('object:modified', syncToState);
     canvas.on('text:changed', syncToState);
     canvas.on('selection:created', updateSelectedTitle);
     canvas.on('selection:updated', updateSelectedTitle);
     canvas.on('selection:cleared', updateSelectedTitle);
+
+    // Load background and objects
+    loadBackgroundAndObjects();
 
     return () => {
       canvas.off('object:modified', syncToState);
@@ -200,14 +219,13 @@ const TextEntryPage = () => {
       fabricRef.current = null;
       objMapRef.current = {};
     };
-  }, [template, API_BASE, blocks]);
+  }, [template, API_BASE]);
 
   // Sync React-side control edits back into Fabric objects
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    // This loop ensures form input changes reflect on the canvas
     Object.values(blocks).forEach((b) => {
       const obj = objMapRef.current[b.title];
       if (!obj) return;
@@ -224,6 +242,9 @@ const TextEntryPage = () => {
     });
     canvas.renderAll();
   }, [blocks]);
+
+
+
 
   const handleGenerate = async () => {
     setIsGenerating(true);

@@ -73,15 +73,16 @@ app.add_middleware(JWTAuthMiddleware, public_routes=settings.public_routes)
 
 
 # --- NEW: Router for Static Files ---
+# 
 @app.api_route("/static/{path:path}", methods=["GET"])
 async def forward_static_files(path: str, request: Request):
-    """
-    Forwards requests for static files to the Template Service.
-    This handles both backgrounds and rendered outputs.
-    """
+    logger.info(f"API Gateway: Received request for static file: /static/{path}")
+    
     template_service_url = settings.TEMPLATE_SERVICE_URL
     url = f"{template_service_url}/static/{path}"
-
+    
+    logger.info(f"API Gateway: Forwarding request to Template Service at: {url}")
+    
     try:
         response = await client.request(
             method="GET",
@@ -89,6 +90,8 @@ async def forward_static_files(path: str, request: Request):
             headers={k: v for k, v in request.headers.items() if k.lower() != "host"}
         )
         response.raise_for_status()
+        
+        logger.info(f"API Gateway: Successfully received response from Template Service with status {response.status_code}")
 
         return Response(
             content=response.content,
@@ -101,10 +104,11 @@ async def forward_static_files(path: str, request: Request):
         )
 
     except httpx.HTTPStatusError as e:
+        logger.error(f"API Gateway: Error forwarding static file. Status: {e.response.status_code}, Detail: {e.response.text}")
         raise HTTPException(status_code=e.response.status_code, detail=f"Error forwarding static file: {e.response.text}")
     except httpx.ConnectError:
+        logger.critical("API Gateway: Template Service is unavailable. Check Docker logs.")
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Template Service is unavailable")
-
 
 # --- Your existing routers ---
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
