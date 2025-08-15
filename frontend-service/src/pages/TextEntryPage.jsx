@@ -1,8 +1,10 @@
 // frontend-service/src/pages/TextEntryPage.jsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
+import * as fabric from 'fabric';
+
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
@@ -10,6 +12,9 @@ const defaultFonts = [
   { label: 'DejaVu Sans', value: '/usr/share/fonts/dejavu/DejaVuSans.ttf' },
   { label: 'Arial (system)', value: '' }, // renderer will fallback if empty
 ];
+
+const CANVAS_W = 715;
+const CANVAS_H = 1144;
 
 const TextEntryPage = () => {
   const { templateId } = useParams();
@@ -23,9 +28,9 @@ const TextEntryPage = () => {
   const [outputUrl, setOutputUrl] = useState(null);
   const [error, setError] = useState(null);
 
-  const stageRef = useRef(null);
-  const contextMenuRef = useRef(null);
-  const [menu, setMenu] = useState({ visible: false, x: 0, y: 0 });
+  const canvasElRef = useRef(null);
+  const fabricRef = useRef(null); // fabric.Canvas
+  const objMapRef = useRef({});   // title -> fabric.Textbox
 
   // Fetch template once
   useEffect(() => {
@@ -66,97 +71,183 @@ const TextEntryPage = () => {
     fetchTemplate();
   }, [token, templateId, API_BASE]);
 
-  // Mouse/drag state
-  const dragState = useRef({ mode: null, startX: 0, startY: 0, origX: 0, origY: 0, origW: 0, origH: 0, origFS: 0 });
+  // Initialize Fabric.js canvas when template loads
+  useEffect(() => {
+    if (!template || !canvasElRef.current) return;
 
-  const onBlockMouseDown = (e, title) => {
-    e.stopPropagation();
-    setSelectedTitle(title);
-    const rect = stageRef.current.getBoundingClientRect();
-    dragState.current = {
-      mode: 'move',
-      startX: e.clientX - rect.left,
-      startY: e.clientY - rect.top,
-      origX: blocks[title].x,
-      origY: blocks[title].y,
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  };
-
-  const onHandleMouseDown = (e, title) => {
-    e.stopPropagation();
-    setSelectedTitle(title);
-    const rect = stageRef.current.getBoundingClientRect();
-    const b = blocks[title];
-    dragState.current = {
-      mode: 'resize',
-      startX: e.clientX - rect.left,
-      startY: e.clientY - rect.top,
-      origW: b.width,
-      origH: b.height,
-      origFS: b.font_size,
-    };
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
-  };
-
-  const onMouseMove = (e) => {
-    const rect = stageRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const { mode, startX, startY, origX, origY, origW, origH, origFS } = dragState.current;
-    if (!mode || !selectedTitle) return;
-
-    setBlocks((prev) => {
-      const b = prev[selectedTitle];
-      if (!b) return prev;
-
-      if (mode === 'move') {
-        const nx = clamp(origX + (x - startX), 0, rect.width - b.width);
-        const ny = clamp(origY + (y - startY), 0, rect.height - b.height);
-        return { ...prev, [selectedTitle]: { ...b, x: Math.round(nx), y: Math.round(ny) } };
-      }
-
-      if (mode === 'resize') {
-        const dw = x - startX;
-        const dh = y - startY;
-        const nw = Math.max(20, origW + dw);
-        const nh = Math.max(20, origH + dh);
-
-        // Scale font size proportionally to height change (simple heuristic)
-        const scale = nh / Math.max(1, origH);
-        const nfs = Math.max(6, Math.round(origFS * scale));
-
-        return { ...prev, [selectedTitle]: { ...b, width: Math.round(nw), height: Math.round(nh), font_size: nfs, max_width: Math.round(nw) } };
-      }
-
-      return prev;
+    const canvas = new fabric.Canvas(canvasElRef.current, {
+      width: CANVAS_W,
+      height: CANVAS_H,
+      selection: true,
+      backgroundColor: '#fff',
+      preserveObjectStacking: true,
     });
-  };
+    fabricRef.current = canvas;
 
-  const onMouseUp = () => {
-    dragState.current = { mode: null };
-    window.removeEventListener('mousemove', onMouseMove);
-    window.removeEventListener('mouseup', onMouseUp);
-  };
+    // Background image (template)
+    const bgUrl = `${API_BASE}${template.image_path}`;
+    fabric.Image.fromURL(bgUrl, (img) => {
+      // Fit image fully inside canvas
+      const scaleX = CANVAS_W / img.width;
+      const scaleY = CANVAS_H / img.height;
+      const scale = Math.min(scaleX, scaleY);
+      img.scale(scale);
+      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+        top: (CANVAS_H - img.height * scale) / 2,
+        left: (CANVAS_W - img.width * scale) / 2,
+        originX: 'left',
+        originY: 'top',
+      });
+    }, { crossOrigin: 'anonymous' });
 
-  const onStageMouseDown = () => {
-    setSelectedTitle(null);
-    setMenu({ visible: false, x: 0, y: 0 });
-  };
+    // Clean up on unmount
+    return () => {
+      canvas.dispose();
+      fabricRef.current = null;
+      objMapRef.current = {};
+    };
+  }, [template, API_BASE]);
 
-  const onBlockContextMenu = (e, title) => {
-    e.preventDefault();
-    setSelectedTitle(title);
-    const rect = stageRef.current.getBoundingClientRect();
-    setMenu({ visible: true, x: e.clientX - rect.left, y: e.clientY - rect.top });
-  };
+  // Create Fabric objects for blocks once we have both: canvas & blocks
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas || !template || !Object.keys(blocks).length) return;
 
-  const applyMenuChange = (field, value) => {
-    if (!selectedTitle) return;
-    setBlocks((prev) => ({ ...prev, [selectedTitle]: { ...prev[selectedTitle], [field]: value } }));
-  };
+    // Avoid duplicate creation
+    canvas.clear();
+    // Re-set background (since clear() removes it)
+    const bgUrl = `${API_BASE}${template.image_path}`;
+    fabric.Image.fromURL(bgUrl, (img) => {
+      const scaleX = CANVAS_W / img.width;
+      const scaleY = CANVAS_H / img.height;
+      const scale = Math.min(scaleX, scaleY);
+      img.scale(scale);
+      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+        top: (CANVAS_H - img.height * scale) / 2,
+        left: (CANVAS_W - img.width * scale) / 2,
+        originX: 'left',
+        originY: 'top',
+      });
+    }, { crossOrigin: 'anonymous' });
+
+    objMapRef.current = {};
+    Object.values(blocks).forEach((b) => {
+      const tb = new fabric.Textbox(b.user_text || b.title, {
+        left: b.x,
+        top: b.y,
+        width: b.width,
+        // height is computed; we’ll control font size for visible scale
+        fontSize: b.font_size,
+        fill: b.color,
+        fontWeight: b.bold ? '700' : '400',
+        fontStyle: b.italic ? 'italic' : 'normal',
+        editable: true,
+        lockScalingFlip: true,
+        transparentCorners: false,
+        cornerStyle: 'circle',
+        borderScaleFactor: 1,
+        objectCaching: false,
+      });
+
+      // Keep selection = selectedTitle
+      tb.on('selected', () => setSelectedTitle(b.title));
+
+      canvas.add(tb);
+      objMapRef.current[b.title] = tb;
+    });
+
+    canvas.renderAll();
+
+    // movement & scaling handlers -> update React state
+    const handleChange = (e) => {
+      const obj = e.target;
+      if (!obj) return;
+
+      // Identify which block title this object represents
+      const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === obj);
+      if (!title) return;
+
+      // Apply scaling to width/fontSize; then reset scale to 1
+      if (obj.scaleX !== 1 || obj.scaleY !== 1) {
+        const newWidth = Math.max(20, Math.round((obj.width ?? 0) * obj.scaleX));
+        const newFontSize = Math.max(6, Math.round((obj.fontSize ?? 12) * obj.scaleY));
+        obj.set({
+          width: newWidth,
+          fontSize: newFontSize,
+          scaleX: 1,
+          scaleY: 1,
+        });
+      }
+
+      // Clamp move into canvas
+      const nx = clamp(Math.round(obj.left ?? 0), 0, CANVAS_W - (obj.width ?? 0));
+      const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - (obj.height ?? 0));
+      obj.set({ left: nx, top: ny });
+
+      setBlocks((prev) => {
+        const b = prev[title];
+        if (!b) return prev;
+        return {
+          ...prev,
+          [title]: {
+            ...b,
+            x: nx,
+            y: ny,
+            width: Math.round(obj.width ?? b.width),
+            // Height of textbox is computed; keep existing for renderer box, but can approximate:
+            height: b.height,
+            font_size: Math.round(obj.fontSize ?? b.font_size),
+            user_text: obj.text ?? b.user_text,
+          },
+        };
+      });
+
+      canvas.renderAll();
+    };
+
+    canvas.on('object:modified', handleChange);
+    canvas.on('object:scaling', handleChange);
+    canvas.on('object:moving', handleChange);
+    canvas.on('text:changed', (e) => {
+      const obj = e.target;
+      if (!obj) return;
+      const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === obj);
+      if (!title) return;
+      setBlocks((prev) => ({
+        ...prev,
+        [title]: { ...prev[title], user_text: obj.text || '' },
+      }));
+    });
+
+    return () => {
+      canvas.off('object:modified', handleChange);
+      canvas.off('object:scaling', handleChange);
+      canvas.off('object:moving', handleChange);
+      canvas.off('text:changed');
+    };
+  }, [template, blocks && Object.keys(blocks).length, API_BASE]);
+
+  // Sync React-side control edits back into Fabric objects
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    Object.values(blocks).forEach((b) => {
+      const obj = objMapRef.current[b.title];
+      if (!obj) return;
+      obj.set({
+        left: b.x,
+        top: b.y,
+        width: b.width,
+        fontSize: b.font_size,
+        fill: b.color,
+        fontWeight: b.bold ? '700' : '400',
+        fontStyle: b.italic ? 'italic' : 'normal',
+        text: b.user_text || b.title,
+      });
+    });
+    canvas.renderAll();
+  }, [blocks]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
@@ -184,7 +275,6 @@ const TextEntryPage = () => {
         { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
       );
 
-      // compatible with either immediate image_url or job style
       if (resp.data?.image_url) {
         setOutputUrl(resp.data.image_url);
       } else if (resp.data?.job_id) {
@@ -299,144 +389,8 @@ const TextEntryPage = () => {
       {/* Canvas / Preview */}
       <div>
         {!outputUrl && (
-          <div
-            ref={stageRef}
-            onMouseDown={onStageMouseDown}
-            style={{
-              position: 'relative',
-              width: 715,
-              height: 1144,
-              border: '1px solid #000',
-              backgroundImage: `url(${API_BASE}${template.image_path})`,
-              backgroundSize: 'contain',
-              backgroundRepeat: 'no-repeat',
-              backgroundPosition: 'center',
-              userSelect: 'none',
-              overflow: 'hidden',
-            }}
-          >
-            {Object.values(blocks).map((b) => {
-              const selected = selectedTitle === b.title;
-              return (
-                <div
-                  key={b.title}
-                  onMouseDown={(e) => onBlockMouseDown(e, b.title)}
-                  onContextMenu={(e) => onBlockContextMenu(e, b.title)}
-                  style={{
-                    position: 'absolute',
-                    left: b.x,
-                    top: b.y,
-                    width: b.width,
-                    height: b.height,
-                    cursor: 'move',
-                    outline: selected ? '2px dashed #3b82f6' : 'none',
-                    padding: 2,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: b.font_size,
-                      color: b.color,
-                      fontFamily: b.font_path ? 'inherit' : 'sans-serif',
-                      width: '100%',
-                      height: '100%',
-                      overflow: 'hidden',
-                      lineHeight: 1.25,
-                      fontWeight: b.bold ? 700 : 400,
-                      fontStyle: b.italic ? 'italic' : 'normal',
-                      pointerEvents: 'none',
-                      whiteSpace: 'pre-wrap',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {b.user_text || b.title}
-                  </div>
-
-                  {/* Corner resize handle (bottom-right) */}
-                  <div
-                    onMouseDown={(e) => onHandleMouseDown(e, b.title)}
-                    style={{
-                      position: 'absolute',
-                      right: -6,
-                      bottom: -6,
-                      width: 12,
-                      height: 12,
-                      background: '#3b82f6',
-                      borderRadius: 2,
-                      cursor: 'nwse-resize',
-                    }}
-                  />
-                </div>
-              );
-            })}
-
-            {/* Context menu */}
-            {menu.visible && selectedTitle && (
-              <div
-                ref={contextMenuRef}
-                style={{
-                  position: 'absolute',
-                  left: menu.x,
-                  top: menu.y,
-                  background: '#111',
-                  color: '#fff',
-                  padding: 10,
-                  borderRadius: 6,
-                  minWidth: 220,
-                  zIndex: 10,
-                }}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <div style={{ marginBottom: 8, fontWeight: 600 }}>{selectedTitle}</div>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 70 }}>Color</span>
-                    <input
-                      type="color"
-                      value={blocks[selectedTitle].color}
-                      onChange={(e) => applyMenuChange('color', e.target.value)}
-                    />
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 70 }}>Font</span>
-                    <select
-                      value={blocks[selectedTitle].font_path || ''}
-                      onChange={(e) => applyMenuChange('font_path', e.target.value || null)}
-                    >
-                      {defaultFonts.map((f) => (
-                        <option key={f.label} value={f.value}>{f.label}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 70 }}>Size</span>
-                    <input
-                      type="number"
-                      min={6}
-                      value={blocks[selectedTitle].font_size}
-                      onChange={(e) => applyMenuChange('font_size', parseInt(e.target.value) || blocks[selectedTitle].font_size)}
-                      style={{ width: 90 }}
-                    />
-                  </label>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={!!blocks[selectedTitle].bold}
-                        onChange={(e) => applyMenuChange('bold', e.target.checked)}
-                      /> Bold
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={!!blocks[selectedTitle].italic}
-                        onChange={(e) => applyMenuChange('italic', e.target.checked)}
-                      /> Italic
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
+          <div style={{ position: 'relative', width: CANVAS_W, height: CANVAS_H, border: '1px solid #000' }}>
+            <canvas ref={canvasElRef} width={CANVAS_W} height={CANVAS_H} />
           </div>
         )}
 
