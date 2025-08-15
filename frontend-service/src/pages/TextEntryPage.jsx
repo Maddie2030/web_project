@@ -9,6 +9,15 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 const defaultFonts = [
   { label: 'DejaVu Sans', value: '/usr/share/fonts/dejavu/DejaVuSans.ttf' },
   { label: 'Arial (system)', value: '' },
+  { label: 'Roboto', value: '' },
+  { label: 'Open Sans', value: '' },
+  { label: 'Lato', value: '' },
+  { label: 'Montserrat', value: '' },
+  { label: 'Verdana', value: '' },           // Web-safe font :contentReference[oaicite:0]{index=0}
+  { label: 'Georgia', value: '' },           // Web-safe serif :contentReference[oaicite:1]{index=1}
+  { label: 'Courier New', value: '' },       // Monospaced web-safe :contentReference[oaicite:2]{index=2}
+  { label: 'Times New Roman', value: '' },   // Classic serif :contentReference[oaicite:3]{index=3}
+  { label: 'Trebuchet MS', value: '' }, 
 ];
 
 const CANVAS_W = 715;
@@ -30,6 +39,47 @@ const TextEntryPage = () => {
   const fabricRef = useRef(null);
   const objMapRef = useRef({});
 
+  // ✅ NEW: Function to add new text block dynamically
+  const addNewTextBlock = () => {
+    const existingBlockCount = Object.keys(blocks).length;
+    const newTitle = `NewBlock${existingBlockCount + 1}`;
+    
+    setBlocks(prev => ({
+      ...prev,
+      [newTitle]: {
+        title: newTitle, // ✅ Ensure title is always set
+        user_text: '',
+        x: 10 + (existingBlockCount * 10),
+        y: 10 + (existingBlockCount * 40),
+        width: 200,
+        height: 50,
+        font_size: 14,
+        color: '#000000',
+        font_path: '',
+        bold: false,
+        italic: false,
+        max_width: 200,
+      },
+    }));
+  };
+
+  // ✅ NEW: Function to remove a text block
+  const removeTextBlock = (titleToRemove) => {
+    setBlocks(prev => {
+      const newBlocks = { ...prev };
+      delete newBlocks[titleToRemove];
+      return newBlocks;
+    });
+    
+    // Remove from canvas
+    const canvas = fabricRef.current;
+    if (canvas && objMapRef.current[titleToRemove]) {
+      canvas.remove(objMapRef.current[titleToRemove]);
+      delete objMapRef.current[titleToRemove];
+      canvas.renderAll();
+    }
+  };
+
   // Fetch template and initialize blocks state
   useEffect(() => {
     if (!token || !templateId) return;
@@ -44,7 +94,7 @@ const TextEntryPage = () => {
         const init = {};
         data.text_blocks.forEach((b) => {
           init[b.title] = {
-            title: b.title,
+            title: b.title || `Block${Object.keys(init).length + 1}`, // ✅ Fallback title
             user_text: b.default_text || '',
             x: b.x,
             y: b.y,
@@ -82,26 +132,22 @@ const TextEntryPage = () => {
       width: CANVAS_W,
       height: CANVAS_H,
       selection: true,
-      backgroundColor: null, // Transparent background
+      backgroundColor: null,
       preserveObjectStacking: true,
     });
     fabricRef.current = canvas;
 
-    // ✅ Correct way to set background image in v6
     const loadBackgroundAndObjects = async () => {
       const bgUrl = `${API_BASE}${template.image_path}`;
       
       try {
-        // Load the image
         const img = await FabricImage.fromURL(bgUrl, { crossOrigin: 'anonymous' });
         
-        // Scale image to fit canvas
         const scaleX = CANVAS_W / img.width;
         const scaleY = CANVAS_H / img.height;
         const scale = Math.min(scaleX, scaleY);
         img.scale(scale);
         
-        // Position the image
         img.set({
           left: (CANVAS_W - img.width * scale) / 2,
           top: (CANVAS_H - img.height * scale) / 2,
@@ -111,26 +157,22 @@ const TextEntryPage = () => {
           evented: false,
         });
         
-        // ✅ Set backgroundImage property directly (v6 way)
         canvas.backgroundImage = img;
-        
-        // Add text blocks after background is set
         addTextBlocks();
-        
-        // Render the canvas
         canvas.renderAll();
         
       } catch (err) {
         console.error('Failed to load background image:', err);
-        // Add text blocks even if background fails
         addTextBlocks();
         canvas.renderAll();
       }
     };
 
-    // Function to add text blocks
     const addTextBlocks = () => {
       Object.values(blocks).forEach((b) => {
+        // ✅ Safe access to block properties
+        if (!b.title) return; // Skip blocks without title
+        
         const tb = new Textbox(b.user_text || b.title, {
           left: b.x,
           top: b.y,
@@ -159,7 +201,6 @@ const TextEntryPage = () => {
       const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === obj);
       if (!title) return;
 
-      // Apply scaling to width/fontSize before updating state
       if (obj.scaleX !== 1 || obj.scaleY !== 1) {
         const newWidth = Math.max(20, Math.round((obj.width ?? 0) * obj.scaleX));
         const newFontSize = Math.max(6, Math.round((obj.fontSize ?? 12) * obj.scaleY));
@@ -171,7 +212,6 @@ const TextEntryPage = () => {
         });
       }
 
-      // Clamp move into canvas
       const nx = clamp(Math.round(obj.left ?? 0), 0, CANVAS_W - (obj.width ?? 0));
       const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - (obj.height ?? 0));
       obj.set({ left: nx, top: ny });
@@ -199,14 +239,12 @@ const TextEntryPage = () => {
       }
     };
 
-    // Add event listeners
     canvas.on('object:modified', syncToState);
     canvas.on('text:changed', syncToState);
     canvas.on('selection:created', updateSelectedTitle);
     canvas.on('selection:updated', updateSelectedTitle);
     canvas.on('selection:cleared', updateSelectedTitle);
 
-    // Load background and objects
     loadBackgroundAndObjects();
 
     return () => {
@@ -227,6 +265,8 @@ const TextEntryPage = () => {
     if (!canvas) return;
 
     Object.values(blocks).forEach((b) => {
+      if (!b.title) return; // ✅ Skip blocks without title
+      
       const obj = objMapRef.current[b.title];
       if (!obj) return;
       obj.set({
@@ -243,28 +283,28 @@ const TextEntryPage = () => {
     canvas.renderAll();
   }, [blocks]);
 
-
-
-
   const handleGenerate = async () => {
     setIsGenerating(true);
     setError(null);
     setOutputUrl(null);
     try {
-      const text_data = Object.values(blocks).map((b) => ({
-        title: b.title,
-        user_text: b.user_text,
-        x: b.x,
-        y: b.y,
-        width: b.width,
-        height: b.height,
-        font_size: b.font_size,
-        color: b.color,
-        font_path: b.font_path || null,
-        bold: b.bold,
-        italic: b.italic,
-        max_width: b.max_width || b.width,
-      }));
+      // ✅ Convert blocks dictionary to array for backend, filter out invalid blocks
+      const text_data = Object.values(blocks)
+        .filter(b => b.title) // Only include blocks with titles
+        .map((b) => ({
+          title: b.title,
+          user_text: b.user_text,
+          x: b.x,
+          y: b.y,
+          width: b.width,
+          height: b.height,
+          font_size: b.font_size,
+          color: b.color,
+          font_path: b.font_path || null,
+          bold: b.bold,
+          italic: b.italic,
+          max_width: b.max_width || b.width,
+        }));
 
       const resp = await axios.post(
         `${API_BASE}/api/v1/render/generate-image`,
@@ -317,21 +357,41 @@ const TextEntryPage = () => {
         <h2 style={{ marginTop: 0 }}>Customize: {template.name}</h2>
 
         {Object.values(blocks).map((b, index) => (
-          <div key={b.title || index} style={{ borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>{b.title}</div>
+          <div key={b.title || index} style={{ borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.75rem', position: 'relative' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div style={{ fontWeight: 600 }}>{b.title || 'Untitled Block'}</div>
+              {/* ✅ FIXED: Safe property access */}
+              {b.title && b.title.startsWith('NewBlock') && (
+                <button 
+                  onClick={() => removeTextBlock(b.title)}
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    color: '#ff4444', 
+                    cursor: 'pointer', 
+                    fontSize: '16px',
+                    padding: '0 4px'
+                  }}
+                  title="Remove block"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            
             <input
               type="text"
-              value={b.user_text}
+              value={b.user_text || ''}
               onChange={(e) => setBlocks((prev) => ({ ...prev, [b.title]: { ...b, user_text: e.target.value } }))}
               style={{ width: '100%', padding: '8px', marginBottom: 8 }}
-              placeholder={`Enter ${b.title}`}
+              placeholder={`Enter ${b.title || 'text'}`}
             />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
               <label style={{ fontSize: 12 }}>Size</label>
               <input
                 type="number"
                 min={6}
-                value={b.font_size}
+                value={b.font_size || 14}
                 onChange={(e) =>
                   setBlocks((prev) => ({
                     ...prev,
@@ -343,7 +403,7 @@ const TextEntryPage = () => {
               <label style={{ fontSize: 12 }}>Color</label>
               <input
                 type="color"
-                value={b.color}
+                value={b.color || '#000000'}
                 onChange={(e) => setBlocks((prev) => ({ ...prev, [b.title]: { ...b, color: e.target.value } }))}
               />
               <label style={{ fontSize: 12 }}>Font</label>
@@ -373,12 +433,29 @@ const TextEntryPage = () => {
               </label>
             </div>
             <div style={{ fontSize: 12, opacity: 0.7 }}>
-              Pos: ({b.x}, {b.y}) • Box: {b.width}×{b.height}
+              Pos: ({b.x || 0}, {b.y || 0}) • Box: {b.width || 0}×{b.height || 0}
             </div>
           </div>
         ))}
 
-        <button onClick={handleGenerate} disabled={isGenerating} style={{ padding: '8px 14px' }}>
+        {/* ✅ NEW: Add Text Block Button */}
+        <button 
+          onClick={addNewTextBlock} 
+          style={{ 
+            marginTop: '1rem', 
+            padding: '8px 12px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            width: '100%'
+          }}
+        >
+          + Add Text Block
+        </button>
+
+        <button onClick={handleGenerate} disabled={isGenerating} style={{ padding: '8px 14px', marginTop: '1rem', width: '100%' }}>
           {isGenerating ? 'Generating…' : 'Generate Image'}
         </button>
         {error && <p style={{ color: 'crimson', marginTop: 12 }}>{error}</p>}
