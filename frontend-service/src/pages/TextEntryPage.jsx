@@ -30,64 +30,82 @@ const TextEntryPage = () => {
 
   const [template, setTemplate] = useState(null);
   const [blocks, setBlocks] = useState({});
-  const [selectedTitle, setSelectedTitle] = useState(null);
+  const [selectedBlockId, setSelectedBlockId] = useState(null); // Track selected block
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputUrl, setOutputUrl] = useState(null);
   const [error, setError] = useState(null);
+  const [blockIdCounter, setBlockIdCounter] = useState(1); // Counter for unique IDs
 
   const canvasElRef = useRef(null);
   const fabricRef = useRef(null);
-  const objMapRef = useRef({});
+  const objMapRef = useRef({}); // Maps blockId to Fabric objects
 
-  // ✅ FIXED: Generate truly unique titles
-  const generateUniqueTitle = (baseTitle = 'NewBlock') => {
-    let counter = 1;
-    let newTitle = `${baseTitle}${counter}`;
-    
-    // Keep incrementing until we find a unique title
-    while (blocks[newTitle]) {
-      counter++;
-      newTitle = `${baseTitle}${counter}`;
-    }
-    
-    return newTitle;
+  // Generate unique block ID
+  const generateBlockId = () => {
+    const id = `block_${Date.now()}_${blockIdCounter}`;
+    setBlockIdCounter(prev => prev + 1);
+    return id;
   };
 
-  const addNewTextBlock = () => {
-    const newTitle = generateUniqueTitle('NewBlock');
+  // Add new text block of specific type
+  const addNewTextBlock = (type = 'TITLE') => {
+    const blockId = generateBlockId();
+    const baseY = type === 'TITLE' ? 50 : 150;
+    const existingCount = Object.keys(blocks).filter(id => blocks[id].type === type).length;
     
+    const newBlock = {
+      id: blockId,
+      type: type, // 'TITLE' or 'DETAILS'
+      user_text: type === 'TITLE' ? 'Enter Title' : 'Enter Details',
+      x: 50 + (existingCount * 20),
+      y: baseY + (existingCount * 80),
+      width: 200,
+      height: 50,
+      font_size: type === 'TITLE' ? 24 : 16,
+      color: type === 'TITLE' ? '#000000' : '#333333',
+      font_path: '',
+      bold: type === 'TITLE' ? true : false,
+      italic: false,
+      max_width: 300,
+    };
+
     setBlocks(prev => ({
       ...prev,
-      [newTitle]: {
-        title: newTitle,
-        user_text: '',
-        x: 10 + (Object.keys(prev).length * 10),
-        y: 10 + (Object.keys(prev).length * 40),
-        width: 200,
-        height: 50,
-        font_size: 14,
-        color: '#000000',
-        font_path: '',
-        bold: false,
-        italic: false,
-        max_width: 200,
-      },
+      [blockId]: newBlock
     }));
+    
+    // Auto-select the new block
+    setSelectedBlockId(blockId);
   };
 
-  const removeTextBlock = (titleToRemove) => {
+  // Remove text block
+  const removeTextBlock = (blockId) => {
     setBlocks(prev => {
       const newBlocks = { ...prev };
-      delete newBlocks[titleToRemove];
+      delete newBlocks[blockId];
       return newBlocks;
     });
     
+    // Remove from canvas
     const canvas = fabricRef.current;
-    if (canvas && objMapRef.current[titleToRemove]) {
-      canvas.remove(objMapRef.current[titleToRemove]);
-      delete objMapRef.current[titleToRemove];
+    if (canvas && objMapRef.current[blockId]) {
+      canvas.remove(objMapRef.current[blockId]);
+      delete objMapRef.current[blockId];
       canvas.renderAll();
     }
+    
+    // Clear selection if this block was selected
+    if (selectedBlockId === blockId) {
+      setSelectedBlockId(null);
+    }
+  };
+
+  // Update block properties
+  const updateBlock = (blockId, updates) => {
+    setBlocks(prev => ({
+      ...prev,
+      [blockId]: { ...prev[blockId], ...updates }
+    }));
   };
 
   // Fetch template and initialize blocks state
@@ -101,27 +119,14 @@ const TextEntryPage = () => {
         });
         setTemplate(data);
 
+        // Initialize with template blocks if any
         const init = {};
-        const usedTitles = new Set(); // Track used titles to avoid duplicates
-        
-        data.text_blocks.forEach((b, index) => {
-          // ✅ FIXED: Ensure unique titles even from template data
-          let title = b.title || `TemplateBlock${index + 1}`;
-          
-          // If title already exists, make it unique
-          if (usedTitles.has(title)) {
-            let counter = 1;
-            while (usedTitles.has(`${title}_${counter}`)) {
-              counter++;
-            }
-            title = `${title}_${counter}`;
-          }
-          
-          usedTitles.add(title);
-          
-          init[title] = {
-            title: title,
-            user_text: b.default_text || '',
+        data.text_blocks?.forEach((b, index) => {
+          const blockId = `template_${index}`;
+          init[blockId] = {
+            id: blockId,
+            type: 'TEMPLATE',
+            user_text: b.default_text || b.title || '',
             x: b.x,
             y: b.y,
             width: b.width,
@@ -144,9 +149,9 @@ const TextEntryPage = () => {
     fetchTemplate();
   }, [token, templateId, API_BASE]);
 
-  // Initialize Fabric.js canvas and populate with objects
+  // Initialize Fabric.js canvas
   useEffect(() => {
-    if (!template || !canvasElRef.current || !Object.keys(blocks).length) return;
+    if (!template || !canvasElRef.current) return;
 
     if (fabricRef.current) {
       fabricRef.current.dispose();
@@ -183,48 +188,20 @@ const TextEntryPage = () => {
         });
         
         canvas.backgroundImage = img;
-        addTextBlocks();
         canvas.renderAll();
         
       } catch (err) {
         console.error('Failed to load background image:', err);
-        addTextBlocks();
-        canvas.renderAll();
       }
-    };
-
-    const addTextBlocks = () => {
-      Object.values(blocks).forEach((b) => {
-        if (!b.title) return;
-        
-        const tb = new Textbox(b.user_text || b.title, {
-          left: b.x,
-          top: b.y,
-          width: b.width,
-          fontSize: b.font_size,
-          fill: b.color,
-          fontWeight: b.bold ? '700' : '400',
-          fontStyle: b.italic ? 'italic' : 'normal',
-          editable: true,
-          lockScalingFlip: true,
-          transparentCorners: false,
-          cornerStyle: 'circle',
-          borderScaleFactor: 1,
-          objectCaching: false,
-        });
-
-        canvas.add(tb);
-        objMapRef.current[b.title] = tb;
-      });
     };
 
     // Event handlers
     const syncToState = (e) => {
       const obj = e.target;
-      if (!obj) return;
-      const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === obj);
-      if (!title) return;
+      if (!obj || !obj.blockId) return;
 
+      const blockId = obj.blockId;
+      
       if (obj.scaleX !== 1 || obj.scaleY !== 1) {
         const newWidth = Math.max(20, Math.round((obj.width ?? 0) * obj.scaleX));
         const newFontSize = Math.max(6, Math.round((obj.fontSize ?? 12) * obj.scaleY));
@@ -234,74 +211,73 @@ const TextEntryPage = () => {
           scaleX: 1,
           scaleY: 1,
         });
+        
+        updateBlock(blockId, {
+          width: newWidth,
+          font_size: newFontSize,
+        });
       }
 
       const nx = clamp(Math.round(obj.left ?? 0), 0, CANVAS_W - (obj.width ?? 0));
       const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - (obj.height ?? 0));
       obj.set({ left: nx, top: ny });
 
-      setBlocks((prev) => ({
-        ...prev,
-        [title]: {
-          ...prev[title],
-          x: nx,
-          y: ny,
-          width: Math.round(obj.width ?? prev[title].width),
-          font_size: Math.round(obj.fontSize ?? prev[title].font_size),
-          user_text: obj.text || '',
-        },
-      }));
+      updateBlock(blockId, {
+        x: nx,
+        y: ny,
+        user_text: obj.text || '',
+      });
     };
     
-    const updateSelectedTitle = (e) => {
+    const updateSelectedBlock = (e) => {
       const activeObject = e.target;
-      if (activeObject) {
-        const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === activeObject);
-        setSelectedTitle(title);
+      if (activeObject && activeObject.blockId) {
+        setSelectedBlockId(activeObject.blockId);
       } else {
-        setSelectedTitle(null);
+        setSelectedBlockId(null);
       }
     };
 
     canvas.on('object:modified', syncToState);
     canvas.on('text:changed', syncToState);
-    canvas.on('selection:created', updateSelectedTitle);
-    canvas.on('selection:updated', updateSelectedTitle);
-    canvas.on('selection:cleared', updateSelectedTitle);
+    canvas.on('selection:created', updateSelectedBlock);
+    canvas.on('selection:updated', updateSelectedBlock);
+    canvas.on('selection:cleared', () => setSelectedBlockId(null));
 
     loadBackgroundAndObjects();
 
     return () => {
       canvas.off('object:modified', syncToState);
       canvas.off('text:changed', syncToState);
-      canvas.off('selection:created', updateSelectedTitle);
-      canvas.off('selection:updated', updateSelectedTitle);
-      canvas.off('selection:cleared', updateSelectedTitle);
+      canvas.off('selection:created', updateSelectedBlock);
+      canvas.off('selection:updated', updateSelectedBlock);
+      canvas.off('selection:cleared', () => setSelectedBlockId(null));
       canvas.dispose();
       fabricRef.current = null;
       objMapRef.current = {};
     };
   }, [template, API_BASE]);
 
-  // Sync React-side control edits back into Fabric objects AND create new ones
+  // Sync blocks to canvas
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
-    Object.values(blocks).forEach((b) => {
-      if (!b.title) return;
+    Object.values(blocks).forEach((block) => {
+      if (!block.id) return;
       
-      let obj = objMapRef.current[b.title];
+      let obj = objMapRef.current[block.id];
       
       if (!obj) {
-        obj = new Textbox(b.user_text || b.title, {
-          left: b.x,
-          top: b.y,
-          width: b.width,
-          fontSize: b.font_size,
-          fill: b.color,
-          fontWeight: b.bold ? '700' : '400',
-          fontStyle: b.italic ? 'italic' : 'normal',
+        // Create new Fabric object
+        obj = new Textbox(block.user_text, {
+          left: block.x,
+          top: block.y,
+          width: block.width,
+          fontSize: block.font_size,
+          fill: block.color,
+          fontWeight: block.bold ? '700' : '400',
+          fontStyle: block.italic ? 'italic' : 'normal',
           editable: true,
           lockScalingFlip: true,
           transparentCorners: false,
@@ -310,18 +286,23 @@ const TextEntryPage = () => {
           objectCaching: false,
         });
         
+        // Add unique identifier to Fabric object
+        obj.blockId = block.id;
+        obj.blockType = block.type;
+        
         canvas.add(obj);
-        objMapRef.current[b.title] = obj;
+        objMapRef.current[block.id] = obj;
       } else {
+        // Update existing Fabric object
         obj.set({
-          left: b.x,
-          top: b.y,
-          width: b.width,
-          fontSize: b.font_size,
-          fill: b.color,
-          fontWeight: b.bold ? '700' : '400',
-          fontStyle: b.italic ? 'italic' : 'normal',
-          text: b.user_text || b.title,
+          left: block.x,
+          top: block.y,
+          width: block.width,
+          fontSize: block.font_size,
+          fill: block.color,
+          fontWeight: block.bold ? '700' : '400',
+          fontStyle: block.italic ? 'italic' : 'normal',
+          text: block.user_text,
         });
       }
     });
@@ -334,22 +315,21 @@ const TextEntryPage = () => {
     setError(null);
     setOutputUrl(null);
     try {
-      const text_data = Object.values(blocks)
-        .filter(b => b.title)
-        .map((b) => ({
-          title: b.title,
-          user_text: b.user_text,
-          x: b.x,
-          y: b.y,
-          width: b.width,
-          height: b.height,
-          font_size: b.font_size,
-          color: b.color,
-          font_path: b.font_path || null,
-          bold: b.bold,
-          italic: b.italic,
-          max_width: b.max_width || b.width,
-        }));
+      const text_data = Object.values(blocks).map((block) => ({
+        title: block.id,
+        user_text: block.user_text,
+        x: block.x,
+        y: block.y,
+        width: block.width,
+        height: block.height,
+        font_size: block.font_size,
+        color: block.color,
+        font_path: block.font_path || null,
+        bold: block.bold,
+        italic: block.italic,
+        max_width: block.max_width,
+        type: block.type,
+      }));
 
       const resp = await axios.post(
         `${API_BASE}/api/v1/render/generate-image`,
@@ -395,111 +375,174 @@ const TextEntryPage = () => {
 
   if (!template) return <div style={{ padding: '2rem' }}>Loading...</div>;
 
+  const selectedBlock = selectedBlockId ? blocks[selectedBlockId] : null;
+
   return (
     <div style={{ padding: '2rem', display: 'grid', gridTemplateColumns: '380px 1fr', gap: '1.5rem' }}>
       {/* Controls */}
       <div>
         <h2 style={{ marginTop: 0 }}>Customize: {template.name}</h2>
 
-        {Object.values(blocks).map((b) => (
-          // ✅ FIXED: Use b.title as key since it's now guaranteed to be unique
-          <div key={b.title} style={{ borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.75rem', position: 'relative' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-              <div style={{ fontWeight: 600 }}>{b.title || 'Untitled Block'}</div>
-              {b.title && b.title.startsWith('NewBlock') && (
-                <button 
-                  onClick={() => removeTextBlock(b.title)}
-                  style={{ 
-                    background: 'none', 
-                    border: 'none', 
-                    color: '#ff4444', 
-                    cursor: 'pointer', 
-                    fontSize: '16px',
-                    padding: '0 4px'
-                  }}
-                  title="Remove block"
-                >
-                  ×
-                </button>
-              )}
+        {/* Add Text Block Buttons */}
+        <div style={{ marginBottom: '1rem', display: 'flex', gap: '8px' }}>
+          <button 
+            onClick={() => addNewTextBlock('TITLE')} 
+            style={{ 
+              padding: '8px 12px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              flex: 1
+            }}
+          >
+            + Add Title
+          </button>
+          <button 
+            onClick={() => addNewTextBlock('DETAILS')} 
+            style={{ 
+              padding: '8px 12px',
+              backgroundColor: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              flex: 1
+            }}
+          >
+            + Add Details
+          </button>
+        </div>
+
+        {/* Block List */}
+        <div style={{ marginBottom: '1rem', maxHeight: '200px', overflowY: 'auto' }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '8px' }}>Text Blocks:</h3>
+          {Object.values(blocks).map((block) => (
+            <div 
+              key={block.id} 
+              onClick={() => setSelectedBlockId(block.id)}
+              style={{ 
+                padding: '8px', 
+                marginBottom: '4px',
+                backgroundColor: selectedBlockId === block.id ? '#e3f2fd' : '#f5f5f5',
+                border: selectedBlockId === block.id ? '1px solid #2196f3' : '1px solid #ddd',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '12px' }}>
+                  {block.type} 
+                  {selectedBlockId === block.id && ' (Selected)'}
+                </div>
+                <div style={{ fontSize: '11px', opacity: 0.7 }}>
+                  {block.user_text.substring(0, 20)}{block.user_text.length > 20 ? '...' : ''}
+                </div>
+              </div>
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeTextBlock(block.id);
+                }}
+                style={{ 
+                  background: 'none', 
+                  border: 'none', 
+                  color: '#ff4444', 
+                  cursor: 'pointer', 
+                  fontSize: '16px',
+                  padding: '0 4px'
+                }}
+              >
+                ×
+              </button>
             </div>
+          ))}
+        </div>
+
+        {/* Selected Block Editor */}
+        {selectedBlock && (
+          <div style={{ border: '1px solid #ddd', borderRadius: '4px', padding: '12px', marginBottom: '1rem' }}>
+            <h3 style={{ marginTop: 0, fontSize: '16px' }}>
+              Edit {selectedBlock.type} Block
+            </h3>
             
-            <input
-              type="text"
-              value={b.user_text || ''}
-              onChange={(e) => setBlocks((prev) => ({ ...prev, [b.title]: { ...b, user_text: e.target.value } }))}
-              style={{ width: '100%', padding: '8px', marginBottom: 8 }}
-              placeholder={`Enter ${b.title || 'text'}`}
-            />
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-              <label style={{ fontSize: 12 }}>Size</label>
-              <input
-                type="number"
-                min={6}
-                value={b.font_size || 14}
-                onChange={(e) =>
-                  setBlocks((prev) => ({
-                    ...prev,
-                    [b.title]: { ...b, font_size: parseInt(e.target.value) || b.font_size },
-                  }))
-                }
-                style={{ width: 90 }}
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Text:</label>
+              <textarea
+                value={selectedBlock.user_text}
+                onChange={(e) => updateBlock(selectedBlock.id, { user_text: e.target.value })}
+                style={{ width: '100%', padding: '8px', minHeight: '60px', resize: 'vertical' }}
+                placeholder={`Enter ${selectedBlock.type.toLowerCase()}`}
               />
-              <label style={{ fontSize: 12 }}>Color</label>
-              <input
-                type="color"
-                value={b.color || '#000000'}
-                onChange={(e) => setBlocks((prev) => ({ ...prev, [b.title]: { ...b, color: e.target.value } }))}
-              />
-              <label style={{ fontSize: 12 }}>Font</label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+              <div>
+                <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Size:</label>
+                <input
+                  type="number"
+                  min={6}
+                  value={selectedBlock.font_size}
+                  onChange={(e) => updateBlock(selectedBlock.id, { font_size: parseInt(e.target.value) || selectedBlock.font_size })}
+                  style={{ width: '100%', padding: '4px' }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Color:</label>
+                <input
+                  type="color"
+                  value={selectedBlock.color}
+                  onChange={(e) => updateBlock(selectedBlock.id, { color: e.target.value })}
+                  style={{ width: '100%', height: '32px' }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '8px' }}>
+              <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>Font:</label>
               <select
-                value={b.font_path || ''}
-                onChange={(e) => setBlocks((prev) => ({ ...prev, [b.title]: { ...b, font_path: e.target.value || null } }))}
+                value={selectedBlock.font_path || ''}
+                onChange={(e) => updateBlock(selectedBlock.id, { font_path: e.target.value || null })}
+                style={{ width: '100%', padding: '4px' }}
               >
                 {defaultFonts.map((f) => (
                   <option key={f.label} value={f.value}>{f.label}</option>
                 ))}
               </select>
-              <label style={{ fontSize: 12 }}>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center' }}>
                 <input
                   type="checkbox"
-                  checked={!!b.bold}
-                  onChange={(e) => setBlocks((prev) => ({ ...prev, [b.title]: { ...b, bold: e.target.checked } }))}
-                />{' '}
+                  checked={selectedBlock.bold}
+                  onChange={(e) => updateBlock(selectedBlock.id, { bold: e.target.checked })}
+                  style={{ marginRight: '4px' }}
+                />
                 Bold
               </label>
-              <label style={{ fontSize: 12 }}>
+              <label style={{ fontSize: '12px', display: 'flex', alignItems: 'center' }}>
                 <input
                   type="checkbox"
-                  checked={!!b.italic}
-                  onChange={(e) => setBlocks((prev) => ({ ...prev, [b.title]: { ...b, italic: e.target.checked } }))}
-                />{' '}
+                  checked={selectedBlock.italic}
+                  onChange={(e) => updateBlock(selectedBlock.id, { italic: e.target.checked })}
+                  style={{ marginRight: '4px' }}
+                />
                 Italic
               </label>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>
-              Pos: ({b.x || 0}, {b.y || 0}) • Box: {b.width || 0}×{b.height || 0}
+
+            <div style={{ fontSize: '11px', opacity: 0.7, marginTop: '8px' }}>
+              Position: ({selectedBlock.x}, {selectedBlock.y}) • Size: {selectedBlock.width}×{selectedBlock.height}
             </div>
           </div>
-        ))}
+        )}
 
-        <button 
-          onClick={addNewTextBlock} 
-          style={{ 
-            marginTop: '1rem', 
-            padding: '8px 12px',
-            backgroundColor: '#007bff',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            width: '100%'
-          }}
-        >
-          + Add Text Block
-        </button>
-
-        <button onClick={handleGenerate} disabled={isGenerating} style={{ padding: '8px 14px', marginTop: '1rem', width: '100%' }}>
+        <button onClick={handleGenerate} disabled={isGenerating} style={{ padding: '8px 14px', width: '100%' }}>
           {isGenerating ? 'Generating...' : 'Generate Image'}
         </button>
         {error && <p style={{ color: 'crimson', marginTop: 12 }}>{error}</p>}
