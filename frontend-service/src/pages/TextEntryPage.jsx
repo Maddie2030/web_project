@@ -13,11 +13,11 @@ const defaultFonts = [
   { label: 'Open Sans', value: '' },
   { label: 'Lato', value: '' },
   { label: 'Montserrat', value: '' },
-  { label: 'Verdana', value: '' },           // Web-safe font :contentReference[oaicite:0]{index=0}
-  { label: 'Georgia', value: '' },           // Web-safe serif :contentReference[oaicite:1]{index=1}
-  { label: 'Courier New', value: '' },       // Monospaced web-safe :contentReference[oaicite:2]{index=2}
-  { label: 'Times New Roman', value: '' },   // Classic serif :contentReference[oaicite:3]{index=3}
-  { label: 'Trebuchet MS', value: '' }, 
+  { label: 'Verdana', value: '' },
+  { label: 'Georgia', value: '' },
+  { label: 'Courier New', value: '' },
+  { label: 'Times New Roman', value: '' },
+  { label: 'Trebuchet MS', value: '' },
 ];
 
 const CANVAS_W = 715;
@@ -39,18 +39,30 @@ const TextEntryPage = () => {
   const fabricRef = useRef(null);
   const objMapRef = useRef({});
 
-  // ✅ NEW: Function to add new text block dynamically
+  // ✅ FIXED: Generate truly unique titles
+  const generateUniqueTitle = (baseTitle = 'NewBlock') => {
+    let counter = 1;
+    let newTitle = `${baseTitle}${counter}`;
+    
+    // Keep incrementing until we find a unique title
+    while (blocks[newTitle]) {
+      counter++;
+      newTitle = `${baseTitle}${counter}`;
+    }
+    
+    return newTitle;
+  };
+
   const addNewTextBlock = () => {
-    const existingBlockCount = Object.keys(blocks).length;
-    const newTitle = `NewBlock${existingBlockCount + 1}`;
+    const newTitle = generateUniqueTitle('NewBlock');
     
     setBlocks(prev => ({
       ...prev,
       [newTitle]: {
-        title: newTitle, // ✅ Ensure title is always set
+        title: newTitle,
         user_text: '',
-        x: 10 + (existingBlockCount * 10),
-        y: 10 + (existingBlockCount * 40),
+        x: 10 + (Object.keys(prev).length * 10),
+        y: 10 + (Object.keys(prev).length * 40),
         width: 200,
         height: 50,
         font_size: 14,
@@ -63,7 +75,6 @@ const TextEntryPage = () => {
     }));
   };
 
-  // ✅ NEW: Function to remove a text block
   const removeTextBlock = (titleToRemove) => {
     setBlocks(prev => {
       const newBlocks = { ...prev };
@@ -71,7 +82,6 @@ const TextEntryPage = () => {
       return newBlocks;
     });
     
-    // Remove from canvas
     const canvas = fabricRef.current;
     if (canvas && objMapRef.current[titleToRemove]) {
       canvas.remove(objMapRef.current[titleToRemove]);
@@ -92,9 +102,25 @@ const TextEntryPage = () => {
         setTemplate(data);
 
         const init = {};
-        data.text_blocks.forEach((b) => {
-          init[b.title] = {
-            title: b.title || `Block${Object.keys(init).length + 1}`, // ✅ Fallback title
+        const usedTitles = new Set(); // Track used titles to avoid duplicates
+        
+        data.text_blocks.forEach((b, index) => {
+          // ✅ FIXED: Ensure unique titles even from template data
+          let title = b.title || `TemplateBlock${index + 1}`;
+          
+          // If title already exists, make it unique
+          if (usedTitles.has(title)) {
+            let counter = 1;
+            while (usedTitles.has(`${title}_${counter}`)) {
+              counter++;
+            }
+            title = `${title}_${counter}`;
+          }
+          
+          usedTitles.add(title);
+          
+          init[title] = {
+            title: title,
             user_text: b.default_text || '',
             x: b.x,
             y: b.y,
@@ -122,7 +148,6 @@ const TextEntryPage = () => {
   useEffect(() => {
     if (!template || !canvasElRef.current || !Object.keys(blocks).length) return;
 
-    // Dispose of old canvas if it exists
     if (fabricRef.current) {
       fabricRef.current.dispose();
       objMapRef.current = {};
@@ -170,8 +195,7 @@ const TextEntryPage = () => {
 
     const addTextBlocks = () => {
       Object.values(blocks).forEach((b) => {
-        // ✅ Safe access to block properties
-        if (!b.title) return; // Skip blocks without title
+        if (!b.title) return;
         
         const tb = new Textbox(b.user_text || b.title, {
           left: b.x,
@@ -259,27 +283,49 @@ const TextEntryPage = () => {
     };
   }, [template, API_BASE]);
 
-  // Sync React-side control edits back into Fabric objects
+  // Sync React-side control edits back into Fabric objects AND create new ones
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
     Object.values(blocks).forEach((b) => {
-      if (!b.title) return; // ✅ Skip blocks without title
+      if (!b.title) return;
       
-      const obj = objMapRef.current[b.title];
-      if (!obj) return;
-      obj.set({
-        left: b.x,
-        top: b.y,
-        width: b.width,
-        fontSize: b.font_size,
-        fill: b.color,
-        fontWeight: b.bold ? '700' : '400',
-        fontStyle: b.italic ? 'italic' : 'normal',
-        text: b.user_text || b.title,
-      });
+      let obj = objMapRef.current[b.title];
+      
+      if (!obj) {
+        obj = new Textbox(b.user_text || b.title, {
+          left: b.x,
+          top: b.y,
+          width: b.width,
+          fontSize: b.font_size,
+          fill: b.color,
+          fontWeight: b.bold ? '700' : '400',
+          fontStyle: b.italic ? 'italic' : 'normal',
+          editable: true,
+          lockScalingFlip: true,
+          transparentCorners: false,
+          cornerStyle: 'circle',
+          borderScaleFactor: 1,
+          objectCaching: false,
+        });
+        
+        canvas.add(obj);
+        objMapRef.current[b.title] = obj;
+      } else {
+        obj.set({
+          left: b.x,
+          top: b.y,
+          width: b.width,
+          fontSize: b.font_size,
+          fill: b.color,
+          fontWeight: b.bold ? '700' : '400',
+          fontStyle: b.italic ? 'italic' : 'normal',
+          text: b.user_text || b.title,
+        });
+      }
     });
+    
     canvas.renderAll();
   }, [blocks]);
 
@@ -288,9 +334,8 @@ const TextEntryPage = () => {
     setError(null);
     setOutputUrl(null);
     try {
-      // ✅ Convert blocks dictionary to array for backend, filter out invalid blocks
       const text_data = Object.values(blocks)
-        .filter(b => b.title) // Only include blocks with titles
+        .filter(b => b.title)
         .map((b) => ({
           title: b.title,
           user_text: b.user_text,
@@ -348,7 +393,7 @@ const TextEntryPage = () => {
     }
   };
 
-  if (!template) return <div style={{ padding: '2rem' }}>Loading…</div>;
+  if (!template) return <div style={{ padding: '2rem' }}>Loading...</div>;
 
   return (
     <div style={{ padding: '2rem', display: 'grid', gridTemplateColumns: '380px 1fr', gap: '1.5rem' }}>
@@ -356,11 +401,11 @@ const TextEntryPage = () => {
       <div>
         <h2 style={{ marginTop: 0 }}>Customize: {template.name}</h2>
 
-        {Object.values(blocks).map((b, index) => (
-          <div key={b.title || index} style={{ borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.75rem', position: 'relative' }}>
+        {Object.values(blocks).map((b) => (
+          // ✅ FIXED: Use b.title as key since it's now guaranteed to be unique
+          <div key={b.title} style={{ borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.75rem', position: 'relative' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <div style={{ fontWeight: 600 }}>{b.title || 'Untitled Block'}</div>
-              {/* ✅ FIXED: Safe property access */}
               {b.title && b.title.startsWith('NewBlock') && (
                 <button 
                   onClick={() => removeTextBlock(b.title)}
@@ -438,7 +483,6 @@ const TextEntryPage = () => {
           </div>
         ))}
 
-        {/* ✅ NEW: Add Text Block Button */}
         <button 
           onClick={addNewTextBlock} 
           style={{ 
@@ -456,7 +500,7 @@ const TextEntryPage = () => {
         </button>
 
         <button onClick={handleGenerate} disabled={isGenerating} style={{ padding: '8px 14px', marginTop: '1rem', width: '100%' }}>
-          {isGenerating ? 'Generating…' : 'Generate Image'}
+          {isGenerating ? 'Generating...' : 'Generate Image'}
         </button>
         {error && <p style={{ color: 'crimson', marginTop: 12 }}>{error}</p>}
       </div>
