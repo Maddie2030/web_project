@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import * as fabric from 'fabric';
-
+import { FabricImage } from 'fabric';
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
@@ -30,9 +30,9 @@ const TextEntryPage = () => {
 
   const canvasElRef = useRef(null);
   const fabricRef = useRef(null); // fabric.Canvas
-  const objMapRef = useRef({});   // title -> fabric.Textbox
+  const objMapRef = useRef({}); // title -> fabric.Textbox
 
-  // Fetch template once
+  // Fetch template and initialize blocks state
   useEffect(() => {
     if (!token || !templateId) return;
 
@@ -71,9 +71,15 @@ const TextEntryPage = () => {
     fetchTemplate();
   }, [token, templateId, API_BASE]);
 
-  // Initialize Fabric.js canvas when template loads
+  // Initialize Fabric.js canvas and populate with objects
   useEffect(() => {
-    if (!template || !canvasElRef.current) return;
+    if (!template || !canvasElRef.current || !Object.keys(blocks).length) return;
+
+    // Dispose of old canvas if it exists to prevent memory leaks
+    if (fabricRef.current) {
+      fabricRef.current.dispose();
+      objMapRef.current = {};
+    }
 
     const canvas = new fabric.Canvas(canvasElRef.current, {
       width: CANVAS_W,
@@ -86,57 +92,32 @@ const TextEntryPage = () => {
 
     // Background image (template)
     const bgUrl = `${API_BASE}${template.image_path}`;
-    fabric.Image.fromURL(bgUrl, (img) => {
-      // Fit image fully inside canvas
-      const scaleX = CANVAS_W / img.width;
-      const scaleY = CANVAS_H / img.height;
-      const scale = Math.min(scaleX, scaleY);
-      img.scale(scale);
-      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
-        top: (CANVAS_H - img.height * scale) / 2,
-        left: (CANVAS_W - img.width * scale) / 2,
-        originX: 'left',
-        originY: 'top',
-      });
-    }, { crossOrigin: 'anonymous' });
+    FabricImage.fromURL(
+      bgUrl,
+      (img) => {
+        const scaleX = CANVAS_W / img.width;
+        const scaleY = CANVAS_H / img.height;
+        const scale = Math.min(scaleX, scaleY);
+        img.scale(scale);
+        canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
+          top: (CANVAS_H - img.height * scale) / 2,
+          left: (CANVAS_W - img.width * scale) / 2,
+          originX: 'left',
+          originY: 'top',
+        });
+      },
+      {
+        crossOrigin: 'anonymous',
+        onError: (err) => console.error('Fabric failed to load image', err),
+      }
+    );
 
-    // Clean up on unmount
-    return () => {
-      canvas.dispose();
-      fabricRef.current = null;
-      objMapRef.current = {};
-    };
-  }, [template, API_BASE]);
-
-  // Create Fabric objects for blocks once we have both: canvas & blocks
-  useEffect(() => {
-    const canvas = fabricRef.current;
-    if (!canvas || !template || !Object.keys(blocks).length) return;
-
-    // Avoid duplicate creation
-    canvas.clear();
-    // Re-set background (since clear() removes it)
-    const bgUrl = `${API_BASE}${template.image_path}`;
-    fabric.Image.fromURL(bgUrl, (img) => {
-      const scaleX = CANVAS_W / img.width;
-      const scaleY = CANVAS_H / img.height;
-      const scale = Math.min(scaleX, scaleY);
-      img.scale(scale);
-      canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas), {
-        top: (CANVAS_H - img.height * scale) / 2,
-        left: (CANVAS_W - img.width * scale) / 2,
-        originX: 'left',
-        originY: 'top',
-      });
-    }, { crossOrigin: 'anonymous' });
-
-    objMapRef.current = {};
+    // Create Fabric objects for blocks
     Object.values(blocks).forEach((b) => {
       const tb = new fabric.Textbox(b.user_text || b.title, {
         left: b.x,
         top: b.y,
         width: b.width,
-        // height is computed; we’ll control font size for visible scale
         fontSize: b.font_size,
         fill: b.color,
         fontWeight: b.bold ? '700' : '400',
@@ -149,25 +130,20 @@ const TextEntryPage = () => {
         objectCaching: false,
       });
 
-      // Keep selection = selectedTitle
-      tb.on('selected', () => setSelectedTitle(b.title));
-
       canvas.add(tb);
       objMapRef.current[b.title] = tb;
     });
 
     canvas.renderAll();
 
-    // movement & scaling handlers -> update React state
-    const handleChange = (e) => {
+    // Event handlers to sync canvas changes back to React state
+    const syncToState = (e) => {
       const obj = e.target;
       if (!obj) return;
-
-      // Identify which block title this object represents
       const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === obj);
       if (!title) return;
 
-      // Apply scaling to width/fontSize; then reset scale to 1
+      // Apply scaling to width/fontSize before updating state
       if (obj.scaleX !== 1 || obj.scaleY !== 1) {
         const newWidth = Math.max(20, Math.round((obj.width ?? 0) * obj.scaleX));
         const newFontSize = Math.max(6, Math.round((obj.fontSize ?? 12) * obj.scaleY));
@@ -184,54 +160,54 @@ const TextEntryPage = () => {
       const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - (obj.height ?? 0));
       obj.set({ left: nx, top: ny });
 
-      setBlocks((prev) => {
-        const b = prev[title];
-        if (!b) return prev;
-        return {
-          ...prev,
-          [title]: {
-            ...b,
-            x: nx,
-            y: ny,
-            width: Math.round(obj.width ?? b.width),
-            // Height of textbox is computed; keep existing for renderer box, but can approximate:
-            height: b.height,
-            font_size: Math.round(obj.fontSize ?? b.font_size),
-            user_text: obj.text ?? b.user_text,
-          },
-        };
-      });
-
-      canvas.renderAll();
-    };
-
-    canvas.on('object:modified', handleChange);
-    canvas.on('object:scaling', handleChange);
-    canvas.on('object:moving', handleChange);
-    canvas.on('text:changed', (e) => {
-      const obj = e.target;
-      if (!obj) return;
-      const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === obj);
-      if (!title) return;
       setBlocks((prev) => ({
         ...prev,
-        [title]: { ...prev[title], user_text: obj.text || '' },
+        [title]: {
+          ...prev[title],
+          x: nx,
+          y: ny,
+          width: Math.round(obj.width ?? prev[title].width),
+          font_size: Math.round(obj.fontSize ?? prev[title].font_size),
+          user_text: obj.text || '',
+        },
       }));
-    });
+    };
+    
+    // Update selected title on selection change
+    const updateSelectedTitle = (e) => {
+      const activeObject = e.target;
+      if (activeObject) {
+        const title = Object.keys(objMapRef.current).find((k) => objMapRef.current[k] === activeObject);
+        setSelectedTitle(title);
+      } else {
+        setSelectedTitle(null);
+      }
+    };
+
+    canvas.on('object:modified', syncToState);
+    canvas.on('text:changed', syncToState);
+    canvas.on('selection:created', updateSelectedTitle);
+    canvas.on('selection:updated', updateSelectedTitle);
+    canvas.on('selection:cleared', updateSelectedTitle);
 
     return () => {
-      canvas.off('object:modified', handleChange);
-      canvas.off('object:scaling', handleChange);
-      canvas.off('object:moving', handleChange);
-      canvas.off('text:changed');
+      canvas.off('object:modified', syncToState);
+      canvas.off('text:changed', syncToState);
+      canvas.off('selection:created', updateSelectedTitle);
+      canvas.off('selection:updated', updateSelectedTitle);
+      canvas.off('selection:cleared', updateSelectedTitle);
+      canvas.dispose();
+      fabricRef.current = null;
+      objMapRef.current = {};
     };
-  }, [template, blocks && Object.keys(blocks).length, API_BASE]);
+  }, [template, API_BASE, blocks]);
 
   // Sync React-side control edits back into Fabric objects
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
 
+    // This loop ensures form input changes reflect on the canvas
     Object.values(blocks).forEach((b) => {
       const obj = objMapRef.current[b.title];
       if (!obj) return;
@@ -277,6 +253,7 @@ const TextEntryPage = () => {
 
       if (resp.data?.image_url) {
         setOutputUrl(resp.data.image_url);
+        setIsGenerating(false);
       } else if (resp.data?.job_id) {
         const jobId = resp.data.job_id;
         const timer = setInterval(async () => {
@@ -301,11 +278,11 @@ const TextEntryPage = () => {
         }, 2000);
       } else {
         setError('Unexpected response from render service.');
+        setIsGenerating(false);
       }
     } catch (e) {
       console.error(e);
       setError('Failed to start image generation.');
-    } finally {
       setIsGenerating(false);
     }
   };
@@ -318,8 +295,8 @@ const TextEntryPage = () => {
       <div>
         <h2 style={{ marginTop: 0 }}>Customize: {template.name}</h2>
 
-        {Object.values(blocks).map((b) => (
-          <div key={b.title} style={{ borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
+        {Object.values(blocks).map((b, index) => (
+          <div key={b.title || index} style={{ borderBottom: '1px solid #eee', paddingBottom: '0.75rem', marginBottom: '0.75rem' }}>
             <div style={{ fontWeight: 600, marginBottom: 6 }}>{b.title}</div>
             <input
               type="text"

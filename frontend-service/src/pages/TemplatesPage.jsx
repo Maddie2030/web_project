@@ -11,14 +11,14 @@ const TemplatesPage = () => {
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const token = useAuthStore((state) => state.token);
-  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8001';
+  const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003';
   const navigate = useNavigate();
 
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
         setLoading(true);
-        const response = await axios.get('/api/v1/templates/templates', {
+        const response = await axios.get(`${API_BASE}/api/v1/templates/templates`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setTemplates(response.data);
@@ -29,7 +29,7 @@ const TemplatesPage = () => {
       }
     };
     if (token) fetchTemplates();
-  }, [token]);
+  }, [token, API_BASE]);
 
   const categories = ['All', 'Modern', 'Professional', 'Creative', 'Minimal', 'Executive'];
 
@@ -86,15 +86,15 @@ const TemplatesPage = () => {
       </div>
 
       {/* Templates Grid */}
-      <div className="overflow-x-auto overflow-y-hidden h-[400px] py-4">
-        <div className="flex flex-row space-x-36">
+      <div className="overflow-x-auto py-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {filteredTemplates.map((template) => (
             <div
               key={template._id}
-              className="w-[80px] flex-shrink-0 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+              className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg transition-all duration-300 transform hover:scale-105"
             >
               {/* Template Preview */}
-              <div className="relative group w-full h-3/4">
+              <div className="relative group aspect-[1/0.8] overflow-hidden">
                 <img
                   src={`${API_BASE}${template.image_path}`}
                   alt={template.name}
@@ -108,17 +108,11 @@ const TemplatesPage = () => {
                     <Eye className="h-4 w-4" />
                     <span>Preview</span>
                   </Link>
-                  <button
-                    onClick={() => navigate(`/textentry/${template._id}`)}
-                    className="opacity-0 group-hover:opacity-100 bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transform translate-y-2 group-hover:translate-y-0 transition-all duration-300"
-                  >
-                    Use This Template
-                  </button>
                 </div>
               </div>
 
               {/* Template Info */}
-              <div className="p-4 h-1/4">
+              <div className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-semibold text-gray-900">
                     {template.name}
@@ -134,9 +128,9 @@ const TemplatesPage = () => {
                   </span>
                   <span>12K downloads</span>
                 </div>
-                {/* Always visible Use This Template button */}
+                {/* Always visible "Use This Template" button */}
                 <button
-                  onClick={() => navigate(`/textentry/${template._id}`)}
+                  onClick={() => navigate(`/text-entry/${template._id}`)}
                   className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors duration-200 font-medium"
                 >
                   Use This Template
