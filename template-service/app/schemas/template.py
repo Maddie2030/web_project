@@ -1,7 +1,7 @@
 # Template-service/app/schemas/template.py
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from typing import List, Optional
 from uuid import UUID, uuid4
 
 class TextBlock(BaseModel):
@@ -11,12 +11,19 @@ class TextBlock(BaseModel):
     height: int
     font_size: int
     color: str
-    default_text: str
+    text_align: Optional[str] = "left"
+    font_weight: Optional[str] = "normal"
+    font_style: Optional[str] = "normal"
+    content: Optional[str] = None
+    default_text: Optional[str] = None
 
 class TemplateBase(BaseModel):
     name: str
     image_path: str
     text_blocks: List[TextBlock]
+    category: Optional[str] = "General"
+    downloads: Optional[int] = 0
+    rating: Optional[float] = 0.0
 
 class TemplateCreate(TemplateBase):
     pass
@@ -28,5 +35,3 @@ class TemplateDB(TemplateBase):
         validate_by_name=True
     )
     id: UUID = Field(alias="_id", default_factory=uuid4)
- 
-

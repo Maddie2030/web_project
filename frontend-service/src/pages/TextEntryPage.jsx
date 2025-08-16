@@ -30,24 +30,22 @@ const TextEntryPage = () => {
 
   const [template, setTemplate] = useState(null);
   const [blocks, setBlocks] = useState({});
-  const [selectedBlockId, setSelectedBlockId] = useState(null); // Track selected block
+  const [selectedBlockId, setSelectedBlockId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputUrl, setOutputUrl] = useState(null);
   const [error, setError] = useState(null);
-  const [blockIdCounter, setBlockIdCounter] = useState(1); // Counter for unique IDs
+  const [blockIdCounter, setBlockIdCounter] = useState(1);
 
   const canvasElRef = useRef(null);
   const fabricRef = useRef(null);
-  const objMapRef = useRef({}); // Maps blockId to Fabric objects
+  const objMapRef = useRef({});
 
-  // Generate unique block ID
   const generateBlockId = () => {
     const id = `block_${Date.now()}_${blockIdCounter}`;
     setBlockIdCounter(prev => prev + 1);
     return id;
   };
 
-  // Add new text block of specific type
   const addNewTextBlock = (type = 'TITLE') => {
     const blockId = generateBlockId();
     const baseY = type === 'TITLE' ? 50 : 150;
@@ -55,7 +53,7 @@ const TextEntryPage = () => {
     
     const newBlock = {
       id: blockId,
-      type: type, // 'TITLE' or 'DETAILS'
+      type: type,
       user_text: type === 'TITLE' ? 'Enter Title' : 'Enter Details',
       x: 50 + (existingCount * 20),
       y: baseY + (existingCount * 80),
@@ -74,11 +72,9 @@ const TextEntryPage = () => {
       [blockId]: newBlock
     }));
     
-    // Auto-select the new block
     setSelectedBlockId(blockId);
   };
 
-  // Remove text block
   const removeTextBlock = (blockId) => {
     setBlocks(prev => {
       const newBlocks = { ...prev };
@@ -86,7 +82,6 @@ const TextEntryPage = () => {
       return newBlocks;
     });
     
-    // Remove from canvas
     const canvas = fabricRef.current;
     if (canvas && objMapRef.current[blockId]) {
       canvas.remove(objMapRef.current[blockId]);
@@ -94,13 +89,11 @@ const TextEntryPage = () => {
       canvas.renderAll();
     }
     
-    // Clear selection if this block was selected
     if (selectedBlockId === blockId) {
       setSelectedBlockId(null);
     }
   };
 
-  // Update block properties
   const updateBlock = (blockId, updates) => {
     setBlocks(prev => ({
       ...prev,
@@ -108,7 +101,6 @@ const TextEntryPage = () => {
     }));
   };
 
-  // Fetch template and initialize blocks state
   useEffect(() => {
     if (!token || !templateId) return;
 
@@ -119,7 +111,6 @@ const TextEntryPage = () => {
         });
         setTemplate(data);
 
-        // Initialize with template blocks if any
         const init = {};
         data.text_blocks?.forEach((b, index) => {
           const blockId = `template_${index}`;
@@ -149,7 +140,6 @@ const TextEntryPage = () => {
     fetchTemplate();
   }, [token, templateId, API_BASE]);
 
-  // Initialize Fabric.js canvas
   useEffect(() => {
     if (!template || !canvasElRef.current) return;
 
@@ -195,37 +185,36 @@ const TextEntryPage = () => {
       }
     };
 
-    // Event handlers
+    // ✅ UPDATED: Event handler that properly handles textbox resizing
     const syncToState = (e) => {
       const obj = e.target;
       if (!obj || !obj.blockId) return;
 
       const blockId = obj.blockId;
       
-      if (obj.scaleX !== 1 || obj.scaleY !== 1) {
-        const newWidth = Math.max(20, Math.round((obj.width ?? 0) * obj.scaleX));
-        const newFontSize = Math.max(6, Math.round((obj.fontSize ?? 12) * obj.scaleY));
+      // ✅ Handle horizontal scaling only - let height adjust automatically
+      if (obj.scaleX !== 1) {
+        const newWidth = Math.max(50, Math.round((obj.width ?? 0) * obj.scaleX));
         obj.set({
           width: newWidth,
-          fontSize: newFontSize,
           scaleX: 1,
-          scaleY: 1,
+          scaleY: 1, // Reset Y scale to prevent distortion
         });
         
         updateBlock(blockId, {
           width: newWidth,
-          font_size: newFontSize,
         });
       }
 
       const nx = clamp(Math.round(obj.left ?? 0), 0, CANVAS_W - (obj.width ?? 0));
-      const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - (obj.height ?? 0));
+      const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - 200);
       obj.set({ left: nx, top: ny });
 
       updateBlock(blockId, {
         x: nx,
         y: ny,
         user_text: obj.text || '',
+        height: obj.height, // Update height based on text wrapping
       });
     };
     
@@ -258,7 +247,7 @@ const TextEntryPage = () => {
     };
   }, [template, API_BASE]);
 
-  // Sync blocks to canvas
+  // ✅ UPDATED: Sync blocks to canvas with proper textbox configuration
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -269,7 +258,7 @@ const TextEntryPage = () => {
       let obj = objMapRef.current[block.id];
       
       if (!obj) {
-        // Create new Fabric object
+        // ✅ Create new Fabric Textbox with flexible resizing
         obj = new Textbox(block.user_text, {
           left: block.x,
           top: block.y,
@@ -279,11 +268,22 @@ const TextEntryPage = () => {
           fontWeight: block.bold ? '700' : '400',
           fontStyle: block.italic ? 'italic' : 'normal',
           editable: true,
-          lockScalingFlip: true,
+          
+          // ✅ KEY PROPERTIES for flexible resizing:
+          lockUniScaling: false,    // Allow non-uniform scaling
+          lockScalingY: true,       // Lock vertical scaling to prevent distortion
+          lockRotation: true,       // Disable rotation
+          lockSkewingX: true,       // Disable skewing
+          lockSkewingY: true,       // Disable skewing
+          
           transparentCorners: false,
           cornerStyle: 'circle',
           borderScaleFactor: 1,
           objectCaching: false,
+          
+          // ✅ Text wrapping properties:
+          textAlign: 'left',
+          lineHeight: 1.2,
         });
         
         // Add unique identifier to Fabric object

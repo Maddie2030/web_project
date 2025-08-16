@@ -1,5 +1,4 @@
 # Template-service/app/routers/template.py
-
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from typing import List, Annotated
 import os
@@ -30,7 +29,6 @@ async def get_template_by_id(
     template_id: str,
     db: Annotated[AsyncIOMotorClient, Depends(get_db_client)],
 ):
-    # Convert string to UUID here
     try:
         template_uuid = UUID(template_id)
     except ValueError:
