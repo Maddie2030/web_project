@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
-import { Canvas, FabricImage, Textbox } from 'fabric';
+import { Canvas, FabricImage, IText } from 'fabric'; // Changed Textbox to IText
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
@@ -57,8 +57,7 @@ const TextEntryPage = () => {
       user_text: type === 'TITLE' ? 'Enter Title' : 'Enter Details',
       x: 50 + (existingCount * 20),
       y: baseY + (existingCount * 80),
-      width: 200,
-      height: 50,
+      // Removed width and height as IText calculates them dynamically
       font_size: type === 'TITLE' ? 24 : 16,
       color: type === 'TITLE' ? '#000000' : '#333333',
       font_path: '',
@@ -185,28 +184,21 @@ const TextEntryPage = () => {
       }
     };
 
-    // ✅ UPDATED: Event handler that properly handles textbox resizing
+    // ✅ UPDATED: Event handler to sync IText changes
     const syncToState = (e) => {
       const obj = e.target;
       if (!obj || !obj.blockId) return;
 
       const blockId = obj.blockId;
       
-      // ✅ Handle horizontal scaling only - let height adjust automatically
-      if (obj.scaleX !== 1) {
-        const newWidth = Math.max(50, Math.round((obj.width ?? 0) * obj.scaleX));
-        obj.set({
-          width: newWidth,
-          scaleX: 1,
-          scaleY: 1, // Reset Y scale to prevent distortion
-        });
-        
-        updateBlock(blockId, {
-          width: newWidth,
-        });
-      }
+      // IText objects handle their own width and height
+      // The old logic for Textbox is no longer needed
+      const newWidth = Math.round(obj.width * obj.scaleX);
+      const newHeight = Math.round(obj.height * obj.scaleY);
 
-      const nx = clamp(Math.round(obj.left ?? 0), 0, CANVAS_W - (obj.width ?? 0));
+      obj.set({ scaleX: 1, scaleY: 1 }); // Reset scale after getting new dimensions
+      
+      const nx = clamp(Math.round(obj.left ?? 0), 0, CANVAS_W - newWidth);
       const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - 200);
       obj.set({ left: nx, top: ny });
 
@@ -214,8 +206,11 @@ const TextEntryPage = () => {
         x: nx,
         y: ny,
         user_text: obj.text || '',
-        height: obj.height, // Update height based on text wrapping
+        width: newWidth,
+        height: newHeight,
       });
+      
+      fabricRef.current?.renderAll();
     };
     
     const updateSelectedBlock = (e) => {
@@ -233,6 +228,7 @@ const TextEntryPage = () => {
     canvas.on('selection:updated', updateSelectedBlock);
     canvas.on('selection:cleared', () => setSelectedBlockId(null));
 
+
     loadBackgroundAndObjects();
 
     return () => {
@@ -245,9 +241,10 @@ const TextEntryPage = () => {
       fabricRef.current = null;
       objMapRef.current = {};
     };
+
   }, [template, API_BASE]);
 
-  // ✅ UPDATED: Sync blocks to canvas with proper textbox configuration
+  // ✅ UPDATED: Sync blocks to canvas with proper IText configuration
   useEffect(() => {
     const canvas = fabricRef.current;
     if (!canvas) return;
@@ -258,11 +255,10 @@ const TextEntryPage = () => {
       let obj = objMapRef.current[block.id];
       
       if (!obj) {
-        // ✅ Create new Fabric Textbox with flexible resizing
-        obj = new Textbox(block.user_text, {
+        // ✅ Create new Fabric IText for flexible resizing
+        obj = new IText(block.user_text, {
           left: block.x,
           top: block.y,
-          width: block.width,
           fontSize: block.font_size,
           fill: block.color,
           fontWeight: block.bold ? '700' : '400',
@@ -270,8 +266,7 @@ const TextEntryPage = () => {
           editable: true,
           
           // ✅ KEY PROPERTIES for flexible resizing:
-          lockUniScaling: false,    // Allow non-uniform scaling
-          lockScalingY: true,       // Lock vertical scaling to prevent distortion
+          lockUniScaling: false,      // Allow non-uniform scaling
           lockRotation: true,       // Disable rotation
           lockSkewingX: true,       // Disable skewing
           lockSkewingY: true,       // Disable skewing
@@ -281,13 +276,11 @@ const TextEntryPage = () => {
           borderScaleFactor: 1,
           objectCaching: false,
           
-          // ✅ Text wrapping properties:
-          textAlign: 'left',
-          lineHeight: 1.2,
-          splitByGrapheme: false,
-          dynamicMinWidth: 0,       // ✅ NEW: Allow text to shrink below natural width
-          noScaleCache: false,      // ✅ NEW: Disable scale caching
-          minWidth: 20,  
+          // ✅ Removed text wrapping properties for IText
+          padding: 2,                 // Small internal padding for better text fit
+          borderOpacityWhenMoving: 0.4,
+          
+          minWidth: 20,
         });
         
         // Add unique identifier to Fabric object
@@ -301,7 +294,6 @@ const TextEntryPage = () => {
         obj.set({
           left: block.x,
           top: block.y,
-          width: block.width,
           fontSize: block.font_size,
           fill: block.color,
           fontWeight: block.bold ? '700' : '400',
