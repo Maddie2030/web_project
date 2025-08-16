@@ -115,7 +115,7 @@ const TextEntryPage = () => {
           const blockId = `template_${index}`;
           init[blockId] = {
             id: blockId,
-            type: 'TEMPLATE',
+            type: b.default_text || b.title || '',  //made changes here
             user_text: b.default_text || b.title || '',
             x: b.x,
             y: b.y,
