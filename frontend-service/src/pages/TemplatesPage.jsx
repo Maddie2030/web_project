@@ -23,8 +23,8 @@ const TemplateThumbnail = ({ template, showTextBlocks = true }) => {
 
     if (!fabricCanvasRef.current) {
       fabricCanvasRef.current = new fabric.StaticCanvas(canvasRef.current, {
-        width: CANVAS_W / 4,
-        height: CANVAS_H / 4,
+        width: CANVAS_W / 2,
+        height: CANVAS_H / 2,
         backgroundColor: null,
       });
     }

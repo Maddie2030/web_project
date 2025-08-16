@@ -284,6 +284,10 @@ const TextEntryPage = () => {
           // ✅ Text wrapping properties:
           textAlign: 'left',
           lineHeight: 1.2,
+          splitByGrapheme: false,
+          dynamicMinWidth: 0,       // ✅ NEW: Allow text to shrink below natural width
+          noScaleCache: false,      // ✅ NEW: Disable scale caching
+          minWidth: 20,  
         });
         
         // Add unique identifier to Fabric object
@@ -423,8 +427,8 @@ const TextEntryPage = () => {
               key={block.id} 
               onClick={() => setSelectedBlockId(block.id)}
               style={{ 
-                padding: '8px', 
-                marginBottom: '4px',
+                padding: '2px', 
+                marginBottom: '2px',
                 backgroundColor: selectedBlockId === block.id ? '#e3f2fd' : '#f5f5f5',
                 border: selectedBlockId === block.id ? '1px solid #2196f3' : '1px solid #ddd',
                 borderRadius: '4px',

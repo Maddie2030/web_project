@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 class TextBlock(BaseModel):
     x: int
     y: int
-    width: int
-    height: int
+    width: float
+    height: float
     font_size: int
     color: str
     text_align: Optional[str] = "left"
