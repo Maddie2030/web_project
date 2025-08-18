@@ -65,65 +65,64 @@ def _draw_text(draw: ImageDraw.ImageDraw, x: int, y: int, text: str, font, fill:
 
 def _draw_wrapped_text(draw, x, y, text, font, fill, max_width: int, bold: bool, italic: bool):
     """Enhanced text wrapping that handles multi-line text and proper line breaks."""
-    if not max_width or max_width <= 0:
-        _draw_text(draw, x, y, text, font, fill, bold, italic)
+    if not text or not text.strip():
         return
-
-    # Check if the entire text fits within max_width first
-    try:
-        full_text_width = draw.textlength(text, font=font)
-    except AttributeError:
-        # Fallback for older Pillow versions
-        full_text_width = draw.textsize(text, font=font)[0]
+        
+    # Handle escaped newlines from frontend
+    text = text.replace('\\n', '\n')
     
-    # If the text fits within max_width, don't wrap it - render as single line
-    if full_text_width <= max_width:
-        _draw_text(draw, x, y, text, font, fill, bold, italic)
-        return
-
-    # For names and short text, be more lenient - allow some overflow for better aesthetics
-    word_count = len(text.split())
-    if word_count <= 2 and full_text_width <= max_width * 1.2:  # Allow 20% overflow for 2 words or less
-        _draw_text(draw, x, y, text, font, fill, bold, italic)
-        return
-
+    # If max_width is not set or very small, use a reasonable default
+    if not max_width or max_width < 50:
+        max_width = 300
+    
     # Handle multi-line text (split by \n first)
     lines = text.split('\n')
     all_wrapped_lines = []
     
     for line in lines:
-        if not line.strip():
+        line = line.strip()
+        if not line:
             all_wrapped_lines.append("")
             continue
-            
-        # Word wrapping for each line
-        words = line.split()
-        if not words:
-            all_wrapped_lines.append("")
-            continue
-
-        wrapped_lines = []
-        current = words[0]
         
-        for word in words[1:]:
-            test_line = f"{current} {word}"
-            try:
-                test_width = draw.textlength(test_line, font=font)
-            except AttributeError:
-                # Fallback for older Pillow versions
-                test_width = draw.textsize(test_line, font=font)
-            
-            if test_width <= max_width:
-                current = test_line
-            else:
-                wrapped_lines.append(current)
-                current = word
+        # Check if line fits in max_width
+        try:
+            line_width = draw.textlength(line, font=font)
+        except AttributeError:
+            line_width = draw.textsize(line, font=font)[0]
         
-        wrapped_lines.append(current)
-        all_wrapped_lines.extend(wrapped_lines)
-
-    # Calculate line height based on font size
-    line_height = int(font.size * 1.2)  # 20% spacing
+        if line_width <= max_width:
+            # Line fits, add as is
+            all_wrapped_lines.append(line)
+        else:
+            # Line needs wrapping
+            words = line.split()
+            if not words:
+                all_wrapped_lines.append("")
+                continue
+            
+            current_line = words[0]
+            
+            for word in words[1:]:
+                test_line = f"{current_line} {word}"
+                try:
+                    test_width = draw.textlength(test_line, font=font)
+                except AttributeError:
+                    test_width = draw.textsize(test_line, font=font)[0]
+                
+                if test_width <= max_width:
+                    current_line = test_line
+                else:
+                    all_wrapped_lines.append(current_line)
+                    current_line = word
+            
+            all_wrapped_lines.append(current_line)
+    
+    # Calculate line height
+    try:
+        line_height = font.getbbox('Ag')[3] + 2  # Height of 'Ag' plus spacing
+    except:
+        line_height = int(font.size * 1.3)
     
     # Draw each line
     for i, line in enumerate(all_wrapped_lines):
@@ -133,30 +132,33 @@ def _draw_wrapped_text(draw, x, y, text, font, fill, max_width: int, bold: bool,
 
 def _process_block(ui_block_data: dict):
     """Process a single text block from the frontend data."""
-    logger.info(f"Processing block: {ui_block_data.get('title', 'unknown')} with text: '{ui_block_data.get('user_text', '')[:50]}...'")
+    title = ui_block_data.get('title', 'unknown')
+    user_text = ui_block_data.get('user_text', '')
     
-    # Validate required fields
-    if not ui_block_data.get('user_text') or not ui_block_data.get('user_text').strip():
-        logger.warning(f"Block '{ui_block_data.get('title', 'unknown')}' has empty text, skipping.")
+    logger.info(f"Processing block: {title} with text length: {len(user_text)}")
+    
+    # Don't skip blocks with text - even if it looks empty, it might have content
+    if not user_text:
+        logger.warning(f"Block '{title}' has no text, skipping.")
         return None
     
     processed = {
-        "title": ui_block_data.get("title", ""),
-        "text": ui_block_data.get("user_text", "").strip(),
-        "x": ui_block_data.get("x", 0),
-        "y": ui_block_data.get("y", 0),
-        "width": ui_block_data.get("width", 100),
-        "height": ui_block_data.get("height", 50),
-        "font_size": max(6, ui_block_data.get("font_size", 16)),  # Ensure minimum font size
+        "title": title,
+        "text": user_text.strip() if user_text else '',
+        "x": max(0, ui_block_data.get("x", 0)),  # Ensure non-negative
+        "y": max(0, ui_block_data.get("y", 0)),  # Ensure non-negative
+        "width": max(10, ui_block_data.get("width", 100)),
+        "height": max(10, ui_block_data.get("height", 50)),
+        "font_size": max(8, min(72, ui_block_data.get("font_size", 16))),  # Clamp font size
         "color": ui_block_data.get("color", "#000000"),
         "font_path": ui_block_data.get("font_path"),
-        "bold": ui_block_data.get("bold", False),
-        "italic": ui_block_data.get("italic", False),
-        "max_width": ui_block_data.get("max_width", 400),
+        "bold": bool(ui_block_data.get("bold", False)),
+        "italic": bool(ui_block_data.get("italic", False)),
+        "max_width": max(50, ui_block_data.get("max_width", ui_block_data.get("width", 400))),
         "type": ui_block_data.get("type", "TEXT")
     }
     
-    logger.info(f"Processed block '{processed['title']}' at ({processed['x']}, {processed['y']}) size {processed['font_size']}px")
+    logger.info(f"Processed block '{processed['title']}' at ({processed['x']}, {processed['y']}) - Font size: {processed['font_size']}px - Max width: {processed['max_width']}px")
     return processed
 
 @celery_app.task(bind=True, name="render.tasks.generate_image_task")
@@ -169,10 +171,10 @@ def generate_image_task(self, request_data: dict) -> str:
         request = ImageRenderRequest(**request_data)
         logger.info(f"Processing {len(request.text_data)} text blocks")
         
-        # Fetch template metadata - NOW WITH CORRECT SCHEMA
+        # Fetch template metadata
         response = requests.get(f"{TEMPLATE_SERVICE_URL}/api/v1/templates/{request.template_id}")
         response.raise_for_status()
-        template = TemplateServiceResponse(**response.json())  # This should work now!
+        template = TemplateServiceResponse(**response.json())
         
         logger.info(f"Fetched template: {template.name} (ID: {template.id})")
 
@@ -185,8 +187,13 @@ def generate_image_task(self, request_data: dict) -> str:
         logger.info(f"Loaded background image: {image.size[0]}x{image.size[1]}")
         draw = ImageDraw.Draw(image)
 
-        # Process each text block from frontend (ignore template text_blocks since frontend provides everything)
-        for block_data in request.text_data:
+        # Process each text block
+        processed_count = 0
+        skipped_count = 0
+        
+        for i, block_data in enumerate(request.text_data):
+            logger.info(f"Processing block {i+1}/{len(request.text_data)}")
+            
             # Convert Pydantic model to dict for processing
             if hasattr(block_data, 'dict'):
                 block_dict = block_data.dict()
@@ -195,14 +202,15 @@ def generate_image_task(self, request_data: dict) -> str:
                 
             processed = _process_block(block_dict)
             if not processed:
+                skipped_count += 1
                 continue
 
             try:
                 font = _load_font(processed["font_path"], processed["font_size"])
                 
-                # Ensure coordinates are within image bounds
-                x = max(0, min(processed["x"], image.width - 10))
-                y = max(0, min(processed["y"], image.height - 10))
+                # Ensure coordinates are within image bounds but don't be too restrictive
+                x = max(0, min(processed["x"], image.width - 50))
+                y = max(0, min(processed["y"], image.height - 50))
                 
                 _draw_wrapped_text(
                     draw=draw,
@@ -216,11 +224,15 @@ def generate_image_task(self, request_data: dict) -> str:
                     italic=processed["italic"],
                 )
                 
-                logger.info(f"Successfully rendered block '{processed['title']}'")
+                processed_count += 1
+                logger.info(f"✅ Successfully rendered block '{processed['title']}'")
                 
             except Exception as e:
-                logger.error(f"Failed to render block '{processed['title']}': {e}")
+                logger.error(f"❌ Failed to render block '{processed['title']}': {e}")
+                skipped_count += 1
                 continue
+
+        logger.info(f"Rendering complete: {processed_count} successful, {skipped_count} skipped")
 
         # Save the generated image
         os.makedirs(STATIC_OUTPUTS_PATH, exist_ok=True)
