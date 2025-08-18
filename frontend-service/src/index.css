@@ -142,3 +142,15 @@ button:focus-visible {
 .slide-in-up {
   animation: slideInUp 0.6s ease-out;
 }
+
+
+
+/* Hide scrollbar for horizontal scroll */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
