@@ -306,77 +306,109 @@ const TextEntryPage = () => {
     canvas.renderAll();
   }, [blocks]);
 
-  const handleGenerate = async () => {
-    setIsGenerating(true);
-    setError(null);
-    setOutputUrl(null);
-    try {
-      const text_data = Object.values(blocks).map((block) => {
-        // Find the Fabric object corresponding to the block
-        const fabricObject = fabricRef.current?.getObjects().find(o => o.blockId === block.id);
+  const pollIntervalRef = useRef(null);
 
-        // Get the current dimensions from the Fabric object
-        const currentWidth = fabricObject ? Math.round(fabricObject.width) : block.width;
-        const currentHeight = fabricObject ? Math.round(fabricObject.getScaledHeight()) : block.height;
+  const handleGenerate = async () => {
+    // Clear any previous polling
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
 
-        return {
-          title: block.id,
-          user_text: block.user_text,
-          x: block.x,
-          y: block.y,
-          width: currentWidth,
-          height: currentHeight,
-          font_size: block.font_size,
-          color: block.color,
-          font_path: block.font_path || null,
-          bold: block.bold,
-          italic: block.italic,
-          max_width: block.max_width,
-          type: block.type,
-        };
-      });
+    setIsGenerating(true);
+    setError(null);
+    setOutputUrl(null);
 
-      const resp = await axios.post(
-        `${API_BASE}/api/v1/render/generate-image`,
-        { template_id: templateId, text_data },
-        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-      );
+    try {
+      const text_data = Object.values(blocks).map((block) => {
+        const fabricObject = fabricRef.current?.getObjects().find(o => o.blockId === block.id);
+        const currentWidth = fabricObject ? Math.round(fabricObject.width) : block.width;
+        const currentHeight = fabricObject ? Math.round(fabricObject.getScaledHeight()) : block.height;
+        return {
+          title: block.id,
+          user_text: block.user_text,
+          x: block.x,
+          y: block.y,
+          width: currentWidth,
+          height: currentHeight,
+          font_size: block.font_size,
+          color: block.color,
+          font_path: block.font_path || null,
+          bold: block.bold,
+          italic: block.italic,
+          max_width: block.max_width,
+          type: block.type,
+        };
+      });
 
-      if (resp.data?.image_url) {
-        setOutputUrl(resp.data.image_url);
-        setIsGenerating(false);
-      } else if (resp.data?.job_id) {
-        const jobId = resp.data.job_id;
-        const timer = setInterval(async () => {
-          try {
-            const s = await axios.get(`${API_BASE}/api/v1/render/status/${jobId}`, {
-              headers: { Authorization: `Bearer ${token}` },
-            });
-            if (s.data.status === 'completed') {
-              clearInterval(timer);
-              setOutputUrl(s.data.output_url);
-              setIsGenerating(false);
-            } else if (s.data.status === 'failed') {
-              clearInterval(timer);
-              setError('Image generation failed.');
-              setIsGenerating(false);
-            }
-          } catch {
-            clearInterval(timer);
-            setIsGenerating(false);
-            setError('Failed to check job status.');
-          }
-        }, 2000);
-      } else {
-        setError('Unexpected response from render service.');
-        setIsGenerating(false);
-      }
-    } catch (e) {
-      console.error(e);
-      setError('Failed to start image generation.');
-      setIsGenerating(false);
-    }
-  };
+      const resp = await axios.post(
+        `${API_BASE}/api/v1/render/generate-image`,
+        { template_id: templateId, text_data },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
+
+      if (resp.data?.task_id) {
+        const taskId = resp.data.task_id;
+
+        pollIntervalRef.current = setInterval(async () => {
+          try {
+            const statusResp = await axios.get(`${API_BASE}/api/v1/render/status/${taskId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            const { status, result, error } = statusResp.data;
+
+            if (status === 'SUCCESS') {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+              setOutputUrl(result);
+              setIsGenerating(false);
+            } else if (status === 'FAILURE') {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+              setError(error || 'Image generation failed.');
+              setIsGenerating(false);
+            }
+            // Otherwise keep polling (PENDING, STARTED)
+          } catch (pollError) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+            setError('Failed to check task status.');
+            setIsGenerating(false);
+          }
+        }, 3000); // Poll every 3 seconds
+      } else {
+        setError('Unexpected response from render service.');
+        setIsGenerating(false);
+      }
+    } catch (e) {
+      setError('Failed to start image generation.');
+      setIsGenerating(false);
+    }
+  };
+
+  // Cleanup the interval when your component unmounts
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+  
+  const downloadImage = (url) => {
+    fetch(url, { mode: 'cors' })
+      .then(response => response.blob())
+      .then(blob => {
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = url.split('/').pop() || 'generated-image.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(blobUrl);
+      })
+      .catch(() => alert('Failed to download file'));
+  };
+
 
   if (!template) return <div style={{ padding: '2rem' }}>Loading...</div>;
 
@@ -556,15 +588,26 @@ const TextEntryPage = () => {
           </div>
         )}
 
-        {outputUrl && (
-          <div>
-            <h3>Generated Image</h3>
-            <img src={`${API_BASE}${outputUrl}`} alt="Generated Output" style={{ maxWidth: '100%' }} />
-            <a href={`${API_BASE}${outputUrl}`} download>
-              <button style={{ marginTop: 12 }}>Download Image</button>
-            </a>
-          </div>
-        )}
+        {outputUrl && (
+          <div>
+            <h3>Generated Image</h3>
+            <img src={`${API_BASE}${outputUrl}`} alt="Generated Output" style={{ maxWidth: '100%' }} />
+            <button 
+              onClick={() => downloadImage(`${API_BASE}${outputUrl}`)}
+              style={{ 
+                marginTop: '12px',
+                padding: '8px 16px',
+                backgroundColor: '#28a745',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              📥 Download Image
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -229,7 +229,8 @@ def generate_image_task(self, request_data: dict) -> str:
         image.save(output_path, format="PNG", quality=95)
         
         logger.info(f"Image saved successfully at {output_path}")
-        return output_path
+        public_url_path = f"/static/outputs/{filename}"
+        return public_url_path 
 
     except Exception as e:
         error_message = f"Task failed: {type(e).__name__} - {str(e)}"

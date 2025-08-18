@@ -234,7 +234,7 @@ class RenderingCore:
         try:
             # Load and process the background image
             image = Image.open(background_path).convert("RGBA")
-            logger.info(f"Loaded background image: {image.size[0]}x{image.size[10]}")
+            logger.info(f"Loaded background image: {image.size[0]}x{image.size[1]}")
             
             # Render text on the image
             image = self._render_text_on_image(image)

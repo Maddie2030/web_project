@@ -362,6 +362,7 @@ services:
       - "8001:8000"
     volumes:
       - static_backgrounds:/app/static/backgrounds
+      - static_outputs:/app/static/outputs
     networks:
       - app-network
     depends_on:
