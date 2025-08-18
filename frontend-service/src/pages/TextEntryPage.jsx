@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
-import { Canvas, FabricImage, IText } from 'fabric';
+import { Canvas, FabricImage, Textbox } from 'fabric';
 
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
@@ -63,8 +63,8 @@ const TextEntryPage = () => {
       bold: type === 'TITLE' ? true : false,
       italic: false,
       max_width: 400,
-      width: 0, 
-      height: 0,
+      width: 400, // Initial width for new blocks
+      height: 0, // Height is dynamic
     };
 
     setBlocks(prev => ({
@@ -191,12 +191,14 @@ const TextEntryPage = () => {
 
       const blockId = obj.blockId;
       
-      const newWidth = Math.round(obj.width * obj.scaleX);
-      const newHeight = Math.round(obj.height * obj.scaleY);
-
+      // Get fixed width and dynamic height
+      const newWidth = Math.round(obj.width);
+      const newHeight = Math.round(obj.getScaledHeight());
+      
       obj.set({ scaleX: 1, scaleY: 1 });
       
-      const nx = clamp(Math.round(obj.left ?? 0), 0, CANVAS_W - newWidth);
+      const nx = Math.round(obj.left ?? 0);
+      // Clamp vertical position
       const ny = clamp(Math.round(obj.top ?? 0), 0, CANVAS_H - 200);
       obj.set({ left: nx, top: ny });
 
@@ -252,7 +254,8 @@ const TextEntryPage = () => {
       let obj = objMapRef.current[block.id];
       
       if (!obj) {
-        obj = new IText(block.user_text, {
+        // Use Textbox instead of IText for auto-wrapping
+        obj = new Textbox(block.user_text, {
           left: block.x,
           top: block.y,
           fontSize: block.font_size,
@@ -260,8 +263,12 @@ const TextEntryPage = () => {
           fontWeight: block.bold ? '700' : '400',
           fontStyle: block.italic ? 'italic' : 'normal',
           editable: true,
-          
-          lockUniScaling: false,
+          // Set a fixed width for the text box
+          width: block.max_width, 
+          // Lock movement on the X-axis
+          lockMovementX: true, 
+          // Lock all scaling
+          lockUniScaling: true,
           lockRotation: true,
           lockSkewingX: true,
           lockSkewingY: true,
@@ -291,6 +298,7 @@ const TextEntryPage = () => {
           fontWeight: block.bold ? '700' : '400',
           fontStyle: block.italic ? 'italic' : 'normal',
           text: block.user_text,
+          width: block.max_width,
         });
       }
     });
@@ -307,9 +315,9 @@ const TextEntryPage = () => {
         // Find the Fabric object corresponding to the block
         const fabricObject = fabricRef.current?.getObjects().find(o => o.blockId === block.id);
 
-        // Calculate the current dimensions
-        const currentWidth = fabricObject ? Math.round(fabricObject.width * fabricObject.scaleX) : block.width;
-        const currentHeight = fabricObject ? Math.round(fabricObject.height * fabricObject.scaleY) : block.height;
+        // Get the current dimensions from the Fabric object
+        const currentWidth = fabricObject ? Math.round(fabricObject.width) : block.width;
+        const currentHeight = fabricObject ? Math.round(fabricObject.getScaledHeight()) : block.height;
 
         return {
           title: block.id,

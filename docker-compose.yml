@@ -379,9 +379,9 @@ services:
     build: ./render-service
     container_name: render-service
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-    volumes:
-      - static_backgrounds:/app/static/backgrounds
-      - static_outputs:/app/static/outputs
+    # volumes:
+    #   - static_backgrounds:/app/static/backgrounds
+    #   - static_outputs:/app/static/outputs
     ports:
       - "8002:8000"
     env_file:
