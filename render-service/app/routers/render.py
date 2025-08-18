@@ -5,9 +5,13 @@ from typing import Optional, Union
 from fastapi import APIRouter, status, HTTPException
 from pydantic import BaseModel, HttpUrl
 from celery import chain
+from fastapi import Body
 from app.celery_app import celery_app
 from app.schemas.render import ImageRenderRequest
 from celery.result import AsyncResult
+from fastapi.responses import JSONResponse
+
+STATIC_URL_BASE = os.getenv("STATIC_URL_BASE", "http://localhost:8003")
 
 # Schemas for the asynchronous response
 class TaskStatusResponse(BaseModel):
@@ -19,6 +23,9 @@ class TaskStatusResponse(BaseModel):
 class TaskQueuedResponse(BaseModel):
     task_id: str
     status: str
+
+class PdfDirectRequest(BaseModel):
+    image_path: str
 
 router = APIRouter(prefix="/api/v1/render", tags=["render"])
 
@@ -41,8 +48,29 @@ async def generate_image_endpoint(request: ImageRenderRequest):
         status="Task queued. Use GET /api/v1/status/{task_id} to check status."
     )
 
+
+
 @router.post(
-    "/generate-pdf",
+    "/generate-pdf-direct",
+    response_model=TaskQueuedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def generate_pdf_direct_endpoint(request: PdfDirectRequest):
+    """
+    Sends a request to generate a PDF from an existing image path (.png).
+    """
+    task = celery_app.send_task(
+        'render.tasks.generate_pdf_from_image_task',
+        args=[request.image_path],
+        queue='render_queue'
+    )
+    return TaskQueuedResponse(
+        task_id=task.id,
+        status="PDF generation task queued. Use GET /api/v1/status/{task_id} to check status."
+    )
+
+@router.post(
+    "/generate-pdf-from-image",
     response_model=TaskQueuedResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
@@ -79,11 +107,14 @@ async def get_task_status(task_id: str):
             error=error_details
         )
     elif task.state == 'SUCCESS':
-        result_url = task.result
+        # The task result is the public URL path (e.g., /static/outputs/filename.png)
+        result_path = task.result
+        # Prepend the base URL to make it a complete, downloadable URL
+        full_url = f"{STATIC_URL_BASE}{result_path}"
         return TaskStatusResponse(
             task_id=task.id,
             status=task.state,
-            result=result_url
+            result=full_url
         )
     else:
         # PENDING, STARTED, RETRY, etc.

@@ -3,6 +3,7 @@
 
 from fastapi import FastAPI, status
 from app.routers.render import router as render_router
+from fastapi.responses import JSONResponse
 
 app = FastAPI(
     title="Render Service API",

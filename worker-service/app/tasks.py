@@ -238,10 +238,27 @@ def generate_image_task(self, request_data: dict) -> str:
         raise e
 
 @celery_app.task(bind=True, name="render.tasks.generate_pdf_from_image_task")
-def generate_pdf_from_image_task(self, image_path: str) -> str:
-    """Generates a PDF from an image path provided by a previous task."""
+def generate_pdf_from_image_task(self, image_path: str = None, request_data: dict = None) -> str:
+    """Generates a PDF from an image path or by generating image first from request data."""
     try:
-        logger.info(f"Starting PDF generation from image: {image_path}")
+        logger.info(f"Starting PDF generation task")
+        
+        # If no image_path provided, generate the image first
+        if not image_path and request_data:
+            logger.info("No image path provided, generating image first...")
+            image_path = generate_image_task(self, request_data)
+            logger.info(f"Generated image at: {image_path}")
+        
+        if not image_path:
+            raise ValueError("Either image_path or request_data must be provided")
+        
+        # Convert relative path to absolute path for WeasyPrint
+        if image_path.startswith("/static/outputs/"):
+            absolute_image_path = os.path.join(STATIC_OUTPUTS_PATH, os.path.basename(image_path))
+        else:
+            absolute_image_path = image_path
+            
+        logger.info(f"Converting image to PDF: {absolute_image_path}")
         
         html = HTML(string=f"""
             <!DOCTYPE html>
@@ -253,7 +270,7 @@ def generate_pdf_from_image_task(self, image_path: str) -> str:
                 </style>
             </head>
             <body>
-                <img src="file://{image_path}" style="width:100%;height:auto" />
+                <img src="file://{absolute_image_path}" style="width:100%;height:auto" />
             </body>
             </html>
         """, base_url=".")
@@ -265,13 +282,13 @@ def generate_pdf_from_image_task(self, image_path: str) -> str:
         html.write_pdf(pdf_path)
         logger.info(f"PDF saved successfully at {pdf_path}")
         
-        # Clean up temporary image file
-        if os.path.exists(image_path):
-            os.remove(image_path)
-            logger.info(f"Cleaned up temporary image file: {image_path}")
-
+        # Don't delete the image file - keep it for user download
+        # if os.path.exists(absolute_image_path):
+        #     os.remove(absolute_image_path)
+        #     logger.info(f"Cleaned up temporary image file: {absolute_image_path}")
+        
         return f"/static/outputs/{pdf_filename}"
-
+        
     except Exception as e:
         error_message = f"PDF generation failed: {type(e).__name__} - {str(e)}"
         logger.error(f"Error in generate_pdf_from_image_task: {error_message}")

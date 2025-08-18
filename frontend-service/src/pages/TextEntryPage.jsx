@@ -33,6 +33,7 @@ const TextEntryPage = () => {
   const [selectedBlockId, setSelectedBlockId] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [outputUrl, setOutputUrl] = useState(null);
+  const [pdfUrl, setPdfUrl] = useState(null);
   const [error, setError] = useState(null);
   const [blockIdCounter, setBlockIdCounter] = useState(1);
 
@@ -317,6 +318,7 @@ const TextEntryPage = () => {
     setIsGenerating(true);
     setError(null);
     setOutputUrl(null);
+  
 
     try {
       const text_data = Object.values(blocks).map((block) => {
@@ -339,6 +341,7 @@ const TextEntryPage = () => {
           type: block.type,
         };
       });
+
 
       const resp = await axios.post(
         `${API_BASE}/api/v1/render/generate-image`,
@@ -392,8 +395,71 @@ const TextEntryPage = () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
   }, []);
+
+  const handleGeneratePdf = async () => {
+    if (!outputUrl) {
+      alert("Please generate the image first.");
+      return;
+    }
+    setIsGenerating(true);
+    setError(null);
+    setPdfUrl(null);
+    
+    const imagePath = outputUrl.replace(API_BASE, '');
+    try {
+      // Use the existing image path to generate PDF
+      const resp = await axios.post(
+        `${API_BASE}/api/v1/render/generate-pdf-direct`,
+        { image_path: imagePath }, // Pass the existing image path
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
+      
+      if (resp.data?.task_id) {
+        const taskId = resp.data.task_id;
+
+        pollIntervalRef.current = setInterval(async () => {
+          try {
+            const statusResp = await axios.get(`${API_BASE}/api/v1/render/status/${taskId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+
+            const { status, result, error } = statusResp.data;
+
+            if (status === 'SUCCESS') {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+              setPdfUrl(result);
+              setIsGenerating(false);
+            } else if (status === 'FAILURE') {
+              clearInterval(pollIntervalRef.current);
+              pollIntervalRef.current = null;
+              setError(error || 'pdf generation failed.');
+              setIsGenerating(false);
+            }
+            // Otherwise keep polling (PENDING, STARTED)
+          } catch (pollError) {
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
+            setError('Failed to check task status.');
+            setIsGenerating(false);
+          }
+        }, 3000); // Poll every 3 seconds
+      } else {
+        setError('Unexpected response from render service.');
+        setIsGenerating(false);
+      }
+    } catch (e) {
+      setError('Failed to start image generation.');
+      setIsGenerating(false);
+    }
+  };
   
-  const downloadImage = (url) => {
+    useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, []);
+  const downloadFile = (url) => {
     fetch(url, { mode: 'cors' })
       .then(response => response.blob())
       .then(blob => {
@@ -408,6 +474,24 @@ const TextEntryPage = () => {
       })
       .catch(() => alert('Failed to download file'));
   };
+
+  // const downloadFile = (url, filename) => {
+  //   fetch(url, { mode: 'cors' })
+  //     .then(response => response.blob())
+  //     .then(blob => {
+  //       const blobUrl = window.URL.createObjectURL(blob);
+  //       const a = document.createElement('a');
+  //       a.href = blobUrl;
+  //       a.download = filename || url.split('/').pop() || 'file';
+  //       document.body.appendChild(a);
+  //       a.click();
+  //       a.remove();
+  //       window.URL.revokeObjectURL(blobUrl);
+  //     })
+  //     .catch(() => alert('Failed to download file'));
+  // };
+
+  
 
 
   if (!template) return <div style={{ padding: '2rem' }}>Loading...</div>;
@@ -575,9 +659,20 @@ const TextEntryPage = () => {
           </div>
         )}
 
-        <button onClick={handleGenerate} disabled={isGenerating} style={{ padding: '8px 14px', width: '100%' }}>
+        <button 
+          onClick={handleGenerate} 
+          disabled={isGenerating} 
+          style={{ marginTop: '16px', padding: '8px 16px', backgroundColor: '#1b7ff2ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+         >
           {isGenerating ? 'Generating...' : 'Generate Image'}
         </button>
+        <button
+          onClick={handleGeneratePdf}
+          disabled={isGenerating}
+          style={{ marginTop: '16px', padding: '8px 16px', backgroundColor: '#0f3359ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+        >
+          Generate PDF
+        </button>
         {error && <p style={{ color: 'crimson', marginTop: 12 }}>{error}</p>}
       </div>
 
@@ -592,22 +687,28 @@ const TextEntryPage = () => {
           <div>
             <h3>Generated Image</h3>
             <img src={`${API_BASE}${outputUrl}`} alt="Generated Output" style={{ maxWidth: '100%' }} />
-            <button 
-              onClick={() => downloadImage(`${API_BASE}${outputUrl}`)}
-              style={{ 
-                marginTop: '12px',
-                padding: '8px 16px',
-                backgroundColor: '#28a745',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
-              }}
+
+            <button
+              onClick={() => downloadFile(`${outputUrl}`, 'generated-image.png')}
+              style={{ display: 'block', marginTop: '8px', padding: '8px 16px', backgroundColor: '#017270ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
             >
-              📥 Download Image
+              Download Image
             </button>
+
+
+
+        {pdfUrl && (
+          
+          <button
+            onClick={() => downloadFile(`${pdfUrl}`, 'generated.pdf')}
+            style={{ display: 'block', marginTop: '8px', padding: '8px 16px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            Download PDF
+          </button>
+            )}
           </div>
         )}
+
       </div>
     </div>
   );
