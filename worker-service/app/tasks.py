@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 TEMPLATE_SERVICE_URL = os.getenv("TEMPLATE_SERVICE_URL", "http://template-service:8000")
 STATIC_BACKGROUNDS_PATH = "/app/static/backgrounds"
 STATIC_OUTPUTS_PATH = "/app/static/outputs"
-DEFAULT_FONT_PATH = "/usr/share/fonts/dejavu/DejaVuSans.ttf"
+DEFAULT_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 # Font mapping for system fonts
 SYSTEM_FONTS = {

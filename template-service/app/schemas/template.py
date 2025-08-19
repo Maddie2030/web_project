@@ -21,9 +21,9 @@ class TemplateBase(BaseModel):
     name: str
     image_path: str
     text_blocks: List[TextBlock]
-    category: Optional[str] = "General"
-    downloads: Optional[int] = 0
-    rating: Optional[float] = 0.0
+    category: Optional[str] = "Modern"
+    downloads: Optional[int] = 15
+    rating: Optional[float] = 3.0
 
 class TemplateCreate(TemplateBase):
     pass
