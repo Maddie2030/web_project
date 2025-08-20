@@ -10,8 +10,8 @@ import { Canvas, FabricImage, Textbox } from 'fabric';
 // Canvas dimensions for template previews
 const ORIGINAL_W = 715;
 const ORIGINAL_H = 1144;
-const PREVIEW_W = 400;
-const PREVIEW_H = 480;
+const PREVIEW_W = ORIGINAL_W /1.8;
+const PREVIEW_H = ORIGINAL_H/1.8 ;
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003';
 
@@ -86,94 +86,62 @@ const TemplateCard = ({ template, navigate }) => {
   return (
     <div className="group relative bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-2xl hover:shadow-blue-100/50 transition-all duration-500 transform hover:-translate-y-2 flex-shrink-0 w-80">
       {/* Template Preview */}
-      <div className="relative aspect-[400/480] overflow-hidden bg-gradient-to-br from-gray-50 to-gray-100 h-96">
+      <div className="relative aspect-[395/475] overflow bg-gradient-to-br from-gray-50 to-gray-100 h-96 ">
         <div className="absolute inset-0 p-4">
           <TemplateThumbnail template={template} showTextBlocks={true} />
         </div>
-        
-        {/* Overlay with Actions */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300">
-          <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
-            <div className="flex space-x-2">
-              <Link
-                to={`/text-entry/${template._id || template.id}`}
-                className="bg-white/90 backdrop-blur-sm text-gray-900 px-4 py-2 rounded-xl font-medium flex items-center space-x-2 hover:bg-white transition-colors shadow-lg"
-              >
-                <Eye className="h-4 w-4" />
-                <span>Preview</span>
-              </Link>
-              <button
-                onClick={() => navigate(`/text-entry/${template._id || template.id}`)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-xl font-medium flex items-center space-x-2 hover:bg-blue-700 transition-colors shadow-lg"
-              >
-                <span>Use Template</span>
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </div>
+      </div>
+            {/* Overlay with Actions */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300">
+        <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end">
+          <div className="flex space-x-2">
             <button
-              onClick={() => setIsLiked(!isLiked)}
-              className={`p-2 rounded-xl backdrop-blur-sm transition-colors shadow-lg ${
-                isLiked ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-700 hover:text-red-500'
-              }`}
+              onClick={() => navigate(`/text-entry/${template._id || template.id}`)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl font-medium flex items-center space-x-2 hover:bg-blue-700 transition-colors shadow-lg"
             >
-              <Heart className={`h-4 w-4 ${isLiked ? 'fill-current' : ''}`} />
+              <span>Use Template</span>
+              <ArrowRight className="h-4 w-4" />
             </button>
           </div>
-        </div>
-
-        {/* Premium Badge */}
-        <div className="absolute top-4 left-4">
-          <span className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-1 rounded-full text-xs font-semibold flex items-center space-x-1 shadow-lg">
-            <Sparkles className="h-3 w-3" />
-            <span>Premium</span>
-          </span>
-        </div>
-
-        {/* Rating Badge */}
-        <div className="absolute top-4 right-4">
-          <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg flex items-center space-x-1 shadow-lg">
-            <Star className="h-3 w-3 text-yellow-400 fill-current" />
-            <span className="text-xs font-medium text-gray-700">4.9</span>
+          <button
+            onClick={() => setIsLiked(!isLiked)}
+            className={`p-2 rounded-xl backdrop-blur-sm transition-colors shadow-lg ${
+              isLiked ? 'bg-red-500 text-white' : 'bg-white/90 text-gray-700 hover:text-red-500'
+            }`}
+          >
+            <Heart className={`h-4 w-4 ${isLiked ? 'fill-current' : ''}`} />
+          </button>
+            {/* Premium Badge */}
+          <div>
+            <span className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-3 py-1 rounded-full text-xs font-semibold flex items-center space-x-1 shadow-lg">
+              <Sparkles className="h-3 w-3" />
+              <span>Premium</span>
+            </span>
           </div>
+
+          {/* Rating Badge - No absolute positioning */}
+          <div>
+            <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded-lg flex items-center space-x-1 shadow-lg">
+              <Star className="h-3 w-3 text-yellow-400 fill-current" />
+              <span className="text-xs font-medium text-gray-700">4.9</span>
+            </div>
+          </div>
+              
         </div>
       </div>
 
       {/* Template Info */}
-      <div className="p-6">
-        <div className="flex items-start justify-between mb-3">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-blue-600 transition-colors">
+      <div className="p-6 bg-transparent">
+        <div className="flex items-start justify-between mb-3 bg-transparent">
+          <div className='bg-transparent'>
+            <h3 className="text-lg font-bold text-gray-900 mb-1 group-hover:text-blue-600 bg-transparent transition-colors ">
               {template.name}
             </h3>
             <p className="text-sm text-gray-500 mb-3">
-              Professional resume template designed for modern careers
+              Professional resume template designed for modern care
             </p>
           </div>
         </div>
-
-        <div className="flex items-center justify-between mb-4">
-          <span className="bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 px-3 py-1 rounded-full text-sm font-medium border border-blue-100">
-            {template.category || 'Professional'}
-          </span>
-          <div className="flex items-center space-x-4 text-sm text-gray-500">
-            <div className="flex items-center space-x-1">
-              <Users className="h-4 w-4" />
-              <span>12K+</span>
-            </div>
-            <div className="flex items-center space-x-1">
-              <Download className="h-4 w-4" />
-              <span>8.5K</span>
-            </div>
-          </div>
-        </div>
-
-        <button
-          onClick={() => navigate(`/text-entry/${template._id || template.id}`)}
-          className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white py-3 px-6 rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center justify-center space-x-2"
-        >
-          <span>Start with this template</span>
-          <ArrowRight className="h-4 w-4" />
-        </button>
       </div>
     </div>
   );

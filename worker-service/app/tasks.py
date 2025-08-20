@@ -34,18 +34,16 @@ SYSTEM_FONTS = {
 
 def _load_font(font_path: str | None, size: int) -> ImageFont.FreeTypeFont:
     """Enhanced font loading that handles system fonts and fallbacks."""
-    if not font_path or font_path == "":
-        try:
-            return ImageFont.truetype(DEFAULT_FONT_PATH, size)
-        except Exception:
-            logger.warning(f"Could not load default font, using load_default()")
-            return ImageFont.load_default()
-    
-    # Check if it's a system font name
+
+    # First, check if the font_path is a key in your system fonts dictionary
     if font_path in SYSTEM_FONTS:
         font_path = SYSTEM_FONTS[font_path]
-    
+    # If the path is still empty or None, use the default
+    elif not font_path or font_path == "":
+        font_path = DEFAULT_FONT_PATH
+
     try:
+        # Now attempt to load the font from the resolved path
         return ImageFont.truetype(font_path, size)
     except Exception as e:
         logger.warning(f"Could not load font at '{font_path}': {e}, using default.")

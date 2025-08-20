@@ -8,16 +8,16 @@ const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
 const defaultFonts = [
   { label: 'DejaVu Sans', value: '/usr/share/fonts/dejavu/DejaVuSans.ttf' },
-  { label: 'Arial (system)', value: '' },
-  { label: 'Roboto', value: '' },
-  { label: 'Open Sans', value: '' },
-  { label: 'Lato', value: '' },
-  { label: 'Montserrat', value: '' },
-  { label: 'Verdana', value: '' },
-  { label: 'Georgia', value: '' },
-  { label: 'Courier New', value: '' },
-  { label: 'Times New Roman', value: '' },
-  { label: 'Trebuchet MS', value: '' },
+  { label: 'Arial (system)', value: 'Arial (system)' },
+  { label: 'Roboto', value: 'Roboto' },
+  { label: 'Open Sans', value: 'Open Sans' },
+  { label: 'Lato', value: 'Lato' },
+  { label: 'Montserrat', value: 'Montserrat' },
+  { label: 'Verdana', value: 'Verdana' },
+  { label: 'Georgia', value: 'Georgia' },
+  { label: 'Courier New', value: 'Courier New' },
+  { label: 'Times New Roman', value: 'Times New Roman' },
+  { label: 'Trebuchet MS', value: 'Trebuchet MS' },
 ];
 
 const CANVAS_W = 715;
