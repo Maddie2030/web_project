@@ -40,12 +40,12 @@ WORKDIR /app
 
 # Copy only the necessary system libraries from the builder stage
 COPY --from=builder /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
-COPY --from=builder /usr/lib/arm-linux-gnueabihf /usr/lib/arm-linux-gnueabihf
+# COPY --from=builder /usr/lib/arm-linux-gnueabihf /usr/lib/arm-linux-gnueabihf
 COPY --from=builder /etc/fonts /etc/fonts
 COPY --from=builder /usr/share/fonts /usr/share/fonts
 
 # Copy the Python packages from the builder stage
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local /usr/local
 
 # Copy the application code
 COPY --from=builder /app /app

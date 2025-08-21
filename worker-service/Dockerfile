@@ -32,7 +32,7 @@ FROM python:3.11-slim-bookworm
 WORKDIR /app
 
 # Copy the Python packages from the builder stage
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local /usr/local
 
 # Copy the system libraries needed for WeasyPrint at runtime.
 # This ensures a minimal but functional environment.

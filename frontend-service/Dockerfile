@@ -25,6 +25,8 @@ WORKDIR /usr/share/nginx/html
 # Remove the default Nginx static files.
 RUN rm -rf ./*
 
+COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+
 # Copy the compiled build from the builder stage into the Nginx directory.
 COPY --from=builder /app/dist .
 

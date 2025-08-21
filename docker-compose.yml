@@ -238,7 +238,7 @@ services:
     build: ./frontend-service
     container_name: frontend-service
     # Production Command: Serve static assets
-    command: npm run serve
+    # command: npm run serve
     # Remove development-only volume mounts
     # volumes:
     # - ./frontend-service:/app

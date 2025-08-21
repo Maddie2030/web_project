@@ -19,8 +19,8 @@ FROM python:3.10-slim-bullseye
 
 WORKDIR /app
 
-# Copy only the installed dependencies from the builder stage
-COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+# Copy the entire Python environment, including the 'bin' folder
+COPY --from=builder /usr/local /usr/local
 
 # Copy the application code from the builder stage
 COPY --from=builder /app /app

@@ -7,3 +7,4 @@ python-jose[cryptography]==3.3.0 # Includes PyJWT for JWT handling
 python-dotenv==1.0.1
 alembic==1.13.1 # Added for database migrations
 asyncpg==0.29.0 # Async driver for PostgreSQL
+gunicorn
