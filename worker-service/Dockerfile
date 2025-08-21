@@ -1,27 +1,47 @@
 # worker-service/Dockerfile
 
-# worker-service/Dockerfile
-
-# Use a Python 3.10 slim image as the base
-FROM python:3.11-slim-bookworm
-
-# Install system dependencies needed for Pillow and WeasyPrint
-RUN apt-get update && apt-get install -y \
-    libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev \
-    fonts-dejavu-core \
-    libxml2-dev libxslt1-dev libcairo2-dev libpango1.0-dev \
-    libgdk-pixbuf-2.0-dev \
-    gcc python3-dev
+# Stage 1: The Build Stage
+# -------------------------
+FROM python:3.11-slim-bookworm AS builder
 
 # Set the working directory inside the container
 WORKDIR /app
+
+# Install system dependencies needed for Pillow and WeasyPrint
+# Note: These will not be in the final image
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libjpeg-dev zlib1g-dev libpng-dev libfreetype6-dev \
+    libxml2-dev libxslt1-dev libcairo2-dev libpango1.0-dev \
+    libgdk-pixbuf-2.0-dev \
+    gcc python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the requirements file and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code, including the 'app' directory
+# Copy the application code
 COPY . .
 
-# Correctly reference the Celery application using its module path
+
+# Stage 2: The Production Stage
+# -----------------------------
+FROM python:3.11-slim-bookworm
+
+# Set the working directory
+WORKDIR /app
+
+# Copy the Python packages from the builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+
+# Copy the system libraries needed for WeasyPrint at runtime.
+# This ensures a minimal but functional environment.
+COPY --from=builder /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
+COPY --from=builder /usr/share/fonts /usr/share/fonts
+COPY --from=builder /etc/fonts /etc/fonts
+
+# Copy the application code from the builder stage
+COPY --from=builder /app /app
+
+# Command to run the Celery worker
 CMD ["celery", "-A", "app.celery_app", "worker", "--loglevel=info", "-Q", "render_queue"]

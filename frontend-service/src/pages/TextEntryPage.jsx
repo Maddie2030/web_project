@@ -689,7 +689,7 @@ const TextEntryPage = () => {
             <img src={`${API_BASE}${outputUrl}`} alt="Generated Output" style={{ maxWidth: '100%' }} />
 
             <button
-              onClick={() => downloadFile(`${outputUrl}`, 'generated-image.png')}
+              onClick={() => downloadFile(`${outputUrl}`)}
               style={{ display: 'block', marginTop: '8px', padding: '8px 16px', backgroundColor: '#017270ff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
             >
               Download Image
@@ -700,7 +700,7 @@ const TextEntryPage = () => {
         {pdfUrl && (
           
           <button
-            onClick={() => downloadFile(`${pdfUrl}`, 'generated.pdf')}
+            onClick={() => downloadFile(`${pdfUrl}`)}
             style={{ display: 'block', marginTop: '8px', padding: '8px 16px', backgroundColor: '#4caf50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
             Download PDF

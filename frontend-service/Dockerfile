@@ -1,34 +1,35 @@
 # Stage 1: The Build Stage
+# -------------------------
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Step 1: Copy only the package files first
+# Copy and install dependencies in one step to create a single layer.
 COPY package*.json ./
-
-# Step 2: Install dependencies. Docker will cache this step.
-# This creates the node_modules folder inside the container
 RUN npm install
 
-# Step 3: Copy the rest of the application source code
+# Copy the rest of the application source code.
 COPY . .
 
-# Step 4: Run the build command
+# Run the build command to generate the static assets.
 RUN npm run build
 
-# Stage 2: The Run Stage
-FROM node:20-alpine
 
-WORKDIR /app
+# Stage 2: The Run Stage (using Nginx)
+# -------------------------
+FROM nginx:stable-alpine
 
-# Step 5: Copy the compiled build from the builder stage
-COPY --from=builder /app/dist ./dist
+# Set working directory for Nginx.
+WORKDIR /usr/share/nginx/html
 
-# Step 6: Install a simple static file server
-RUN npm install -g serve
+# Remove the default Nginx static files.
+RUN rm -rf ./*
 
-# Step 7: Expose the port
-EXPOSE 5173
+# Copy the compiled build from the builder stage into the Nginx directory.
+COPY --from=builder /app/dist .
 
-# Step 8: Command to serve the application
-CMD ["serve", "-s", "dist"]
+# Expose port 80, the standard HTTP port for web servers.
+EXPOSE 80
+
+# Command to start Nginx in the foreground.
+CMD ["nginx", "-g", "daemon off;"]
