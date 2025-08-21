@@ -431,7 +431,7 @@ services:
     build: ./frontend-service
     container_name: frontend-service
     # Command for Vite dev server - ensures it listens on all interfaces
-    command: npm run dev -- --host 0.0.0.0
+    command: npm run serve
     volumes:
       - ./frontend-service:/app # Mount code for development/live reloading
       - /app/node_modules # Cache node_modules
