@@ -181,7 +181,7 @@ async def login_for_access_token(
     )
 
     # 6. Return the Access Token
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"token": access_token, "token_type": "bearer"}
 
 # --- UPDATED: Protected Endpoint: Get Current User Info (/me) ---
 # This endpoint now requires authentication via the get_current_active_user dependency
