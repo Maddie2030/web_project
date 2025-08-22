@@ -4,16 +4,16 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy and install dependencies in one step to create a single layer.
 COPY package*.json ./
 RUN npm install
 
-# Copy the rest of the application source code.
 COPY . .
 
 # Run the build command to generate the static assets.
 RUN npm run build
 
+# Add this line to see what's in the dist directory
+RUN ls -l /app/dist
 
 # Stage 2: The Run Stage (using Nginx)
 # -------------------------
@@ -23,15 +23,13 @@ FROM nginx:stable-alpine
 WORKDIR /usr/share/nginx/html
 
 # Remove the default Nginx static files.
-RUN rm -rf ./*
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+# Copy nginx configuration
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy the compiled build from the builder stage into the Nginx directory.
-COPY --from=builder /app/dist .
-
-# Expose port 80, the standard HTTP port for web servers.
+# Expose port
 EXPOSE 80
 
-# Command to start Nginx in the foreground.
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]

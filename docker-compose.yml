@@ -244,7 +244,7 @@ services:
     # - ./frontend-service:/app
     # - /app/node_modules
     ports:
-      - "80:5173" # Map to standard HTTP port 80
+      - "80:80" # Map to standard HTTP port 80
     networks:
       - app-network
     # Production health check
