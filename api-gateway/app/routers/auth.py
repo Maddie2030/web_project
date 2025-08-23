@@ -10,7 +10,7 @@ router = APIRouter()
 client = httpx.AsyncClient()
 
 # Get the downstream auth service URL from environment variables
-AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8000")
+AUTH_SERVICE_URL = os.getenv("AUTH_SERVICE_URL", "http://auth-service:8001")
 
 # List of hop-by-hop headers that should NOT be forwarded to the client
 HOP_BY_HOP_HEADERS = {

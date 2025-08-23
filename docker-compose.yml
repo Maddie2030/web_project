@@ -81,12 +81,12 @@ services:
     build: ./auth-service
     container_name: auth-service
     # Production Command: Use Gunicorn with Uvicorn workers
-    command: gunicorn app.main:app --workers 5 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    command: gunicorn app.main:app --workers 5 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:8001
     # Remove development-only volume mounts
     # volumes:
     # - ./auth-service:/app
     ports:
-      - "8000:8000"
+      - "8001:8001"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - SECRET_KEY=${SECRET_KEY}

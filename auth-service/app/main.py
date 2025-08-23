@@ -60,5 +60,5 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     load_dotenv()
     host = os.getenv("APP_HOST", "0.0.0.0")
-    port = int(os.getenv("APP_PORT", 8000))
+    port = int(os.getenv("APP_PORT", 8001))
     uvicorn.run(app, host=host, port=port)

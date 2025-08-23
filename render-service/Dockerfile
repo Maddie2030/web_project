@@ -51,10 +51,10 @@ COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app /app
 
 # Expose the port the app runs on
-EXPOSE 8000
+EXPOSE 8003
 
 # Command to run the application with Gunicorn and Uvicorn workers
 CMD ["gunicorn", "app.main:app", \
      "-k", "uvicorn.workers.UvicornWorker", \
-     "--bind", "0.0.0.0:8000", \
+     "--bind", "0.0.0.0:8003", \
      "--workers", "2"]

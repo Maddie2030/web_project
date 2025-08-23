@@ -24,7 +24,7 @@ router = APIRouter()
 # --- NEW: OAuth2PasswordBearer for JWT Token Extraction ---
 # This tells FastAPI how to expect the token (in Authorization: Bearer <token>)
 # tokenUrl="api/v1/auth/token" points to your login endpoint where clients can obtain a token
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 # --- NEW: Dependency: Get Current User ---
 async def get_current_user(
@@ -185,7 +185,7 @@ async def login_for_access_token(
 
 # --- UPDATED: Protected Endpoint: Get Current User Info (/me) ---
 # This endpoint now requires authentication via the get_current_active_user dependency
-@router.get("/me/", response_model=UserResponse, status_code=status.HTTP_200_OK)
+@router.get("/me", response_model=UserResponse, status_code=status.HTTP_200_OK)
 async def read_users_me(
     current_user: Annotated[User, Depends(get_current_active_user)] # This line protects the endpoint
 ):

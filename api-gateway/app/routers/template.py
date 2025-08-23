@@ -2,11 +2,12 @@
 
 # api-gateway/app/routers/template.py
 from fastapi import APIRouter, Request, HTTPException, Response, status
-import httpx
+import httpx , os
 from ..settings import settings
 
 router = APIRouter()
 client = httpx.AsyncClient()
+TEMPLATE_SERVICE_URL = os.getenv("TEMPLATE_SERVICE_URL", "http://template-service:8002")
 
 HOP_BY_HOP_HEADERS = {
     "connection",

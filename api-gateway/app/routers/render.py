@@ -5,7 +5,7 @@ import httpx
 import os
 
 router = APIRouter()
-RENDER_SERVICE_URL = os.getenv("RENDER_SERVICE_URL", "http://render-service:8000")
+RENDER_SERVICE_URL = os.getenv("RENDER_SERVICE_URL", "http://render-service:8003")
 
 # Headers that should NOT be forwarded per HTTP spec (hop-by-hop headers)
 HOP_BY_HOP_HEADERS = {
