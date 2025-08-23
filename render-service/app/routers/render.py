@@ -11,7 +11,7 @@ from app.schemas.render import ImageRenderRequest
 from celery.result import AsyncResult
 from fastapi.responses import JSONResponse
 
-STATIC_URL_BASE = os.getenv("STATIC_URL_BASE", "http://localhost:8000")
+
 
 # Schemas for the asynchronous response
 class TaskStatusResponse(BaseModel):
@@ -110,7 +110,7 @@ async def get_task_status(task_id: str):
         # The task result is the public URL path (e.g., /static/outputs/filename.png)
         result_path = task.result
         # Prepend the base URL to make it a complete, downloadable URL
-        full_url = f"{STATIC_URL_BASE}{result_path}"
+        full_url = f"{result_path}"
         return TaskStatusResponse(
             task_id=task.id,
             status=task.state,
