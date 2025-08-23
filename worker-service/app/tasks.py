@@ -13,7 +13,7 @@ from app.schemas.render import ImageRenderRequest, TemplateServiceResponse
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-TEMPLATE_SERVICE_URL = os.getenv("TEMPLATE_SERVICE_URL", "http://template-service:8000")
+TEMPLATE_SERVICE_URL = os.getenv("TEMPLATE_SERVICE_URL", "http://template-service:8002")
 STATIC_BACKGROUNDS_PATH = "/app/static/backgrounds"
 STATIC_OUTPUTS_PATH = "/app/static/outputs"
 DEFAULT_FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"

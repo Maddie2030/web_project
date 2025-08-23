@@ -11,7 +11,7 @@ from app.schemas.render import ImageRenderRequest
 from celery.result import AsyncResult
 from fastapi.responses import JSONResponse
 
-STATIC_URL_BASE = os.getenv("STATIC_URL_BASE", "http://localhost:8003")
+STATIC_URL_BASE = os.getenv("STATIC_URL_BASE", "http://localhost:8000")
 
 # Schemas for the asynchronous response
 class TaskStatusResponse(BaseModel):
