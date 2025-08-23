@@ -1,53 +1,40 @@
 # api-gateway/app/main.py
 
-import time
 import logging
-
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Response
-from fastapi.middleware.cors import CORSMiddleware
 import httpx
+from fastapi import FastAPI, Request, Depends, Response
+from fastapi.middleware.cors import CORSMiddleware
+from redis.asyncio import Redis
+from fastapi_limiter import FastAPILimiter
+from fastapi_limiter.depends import RateLimiter
 
 from .middleware import JWTAuthMiddleware
 from .routers import auth, template, render
-from .settings import settings
-
-from fastapi_limiter import FastAPILimiter
-from redis.asyncio import Redis
-from fastapi_limiter.depends import RateLimiter
+from .config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api-gateway")
 
 app = FastAPI(
     title="API Gateway",
-    description="Gateway for all microservices.",
+    description="Gateway for all microservices."
 )
 
-# Create a global httpx client for forwarding requests
+# Global httpx client for static file forwarding or other direct requests
 client = httpx.AsyncClient()
 
-
+# --- Startup / Shutdown ---
 @app.on_event("startup")
 async def startup():
     redis = Redis(host="redis", port=6379, db=0)
     await FastAPILimiter.init(redis)
 
-
 @app.on_event("shutdown")
 async def shutdown():
-    # Close all global clients gracefully
     await client.aclose()
     await FastAPILimiter.close()
 
-
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    logger.info(f"Incoming request: {request.method} {request.url}")
-    response = await call_next(request)
-    logger.info(f"Response status: {response.status_code} for {request.method} {request.url}")
-    return response
-
-
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -56,70 +43,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-settings.public_routes = [
-    "/",
-    "/health",
-    "/api/v1/auth/register",
-    "/api/v1/auth/login",
-    "/docs",
-    "/openapi.json",
-    # Add the static files path to the public routes
-    "/static/{path:path}" 
-]
-
-
+# --- JWT Auth Middleware ---
+# Uses the single source of truth for public routes from settings.py
 app.add_middleware(JWTAuthMiddleware, public_routes=settings.public_routes)
 
+# --- Logging Middleware ---
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"Incoming request: {request.method} {request.url}")
+    response = await call_next(request)
+    logger.info(f"Response status: {response.status_code} for {request.method} {request.url}")
+    return response
 
-# --- NEW: Router for Static Files ---
-# 
+# --- Static Files Proxy ---
 @app.api_route("/static/{path:path}", methods=["GET"])
 async def forward_static_files(path: str, request: Request):
-    logger.info(f"API Gateway: Received request for static file: /static/{path}")
-    
+    """
+    Forward /static/* requests to Template Service.
+    """
     template_service_url = settings.TEMPLATE_SERVICE_URL
     url = f"{template_service_url}/static/{path}"
-    
-    logger.info(f"API Gateway: Forwarding request to Template Service at: {url}")
-    
+
+    headers = {k: v for k, v in request.headers.items() if k.lower() != "host"}
+
     try:
-        response = await client.request(
-            method="GET",
-            url=url,
-            headers={k: v for k, v in request.headers.items() if k.lower() != "host"}
-        )
+        response = await client.request("GET", url, headers=headers)
         response.raise_for_status()
-        
-        logger.info(f"API Gateway: Successfully received response from Template Service with status {response.status_code}")
 
         return Response(
             content=response.content,
             status_code=response.status_code,
             headers={
                 "Content-Type": response.headers.get("content-type"),
-                "Content-Length": response.headers.get("content-length"),
+                "Content-Length": response.headers.get("content-length")
             },
             media_type=response.headers.get("content-type")
         )
-
     except httpx.HTTPStatusError as e:
-        logger.error(f"API Gateway: Error forwarding static file. Status: {e.response.status_code}, Detail: {e.response.text}")
-        raise HTTPException(status_code=e.response.status_code, detail=f"Error forwarding static file: {e.response.text}")
+        logger.error(f"Static file error: {e.response.status_code} - {e.response.text}")
+        return Response(status_code=e.response.status_code, content=e.response.text)
     except httpx.ConnectError:
-        logger.critical("API Gateway: Template Service is unavailable. Check Docker logs.")
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Template Service is unavailable")
+        logger.critical("Template Service is unavailable for static files.")
+        return Response(status_code=503, content="Template Service unavailable")
 
-# --- Your existing routers ---
+# --- Include Routers with prefixes ---
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(template.router, prefix="/api/v1/templates", tags=["Templates"])
 app.include_router(render.router, prefix="/api/v1/render", tags=["Render"])
 
-
+# --- Root / Health ---
 @app.get("/", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
 def root():
     return {"message": "Welcome to the API Gateway"}
-
 
 @app.get("/health", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
 def health_check():

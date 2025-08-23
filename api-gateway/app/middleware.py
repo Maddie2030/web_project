@@ -4,7 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from fastapi import HTTPException, status
-from .dependencies import validate_token
+from .dependencies import get_token_from_header, validate_token
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, public_routes: list = None):
@@ -26,29 +26,20 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
-        # Get the Authorization header
-        authorization = request.headers.get("Authorization")
+        # Get token using the refactored function
+        token = get_token_from_header(request)
 
-        # Handle missing Authorization header
-        if not authorization:
+        # Handle missing or invalid token
+        if not token:
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Authorization header is missing"}
+                content={"detail": "Authorization header is missing or invalid"}
             )
         
         try:
-            # Attempt to extract and validate the token
-            scheme, token = authorization.split()
-            if scheme.lower() != "bearer":
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={"detail": "Invalid authentication scheme"}
-                )
-
             user_id = validate_token(token=token)
             request.state.user_id = user_id
             response = await call_next(request)
             return response
-        except (ValueError, HTTPException) as e:
-            # Handle split errors (ValueError) and validation errors (HTTPException)
-            return JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid token or credentials"})
+        except HTTPException as e:
+            return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
