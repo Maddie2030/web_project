@@ -13,7 +13,7 @@ const ORIGINAL_H = 1144;
 const PREVIEW_W = ORIGINAL_W /1.8;
 const PREVIEW_H = ORIGINAL_H/1.8 ;
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8003';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 // Component to render each template preview
 const TemplateThumbnail = ({ template, showTextBlocks = true }) => {
